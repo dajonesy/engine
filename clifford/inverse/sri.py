@@ -1,4 +1,4 @@
-# file: clifford/inverse/jones.py
+# file: clifford/inverse/sri.py
 """
 The Jones multivector inverse.
 
@@ -56,10 +56,10 @@ import numpy as np
 from numba import njit
 
 import clifford.context as Clif
-#from clifford.multivector import Accum
+from clifford.multivector import Accum
 
 
-def _make_jones_kernel(fast_mul):
+def _make_sri_kernel(fast_mul):
     """Factory that closes a Numba kernel over the active multiplier.
 
     Parameters
@@ -96,27 +96,16 @@ def _make_jones_kernel(fast_mul):
         """
         b_reg = fast_mul(a_reg, rev_a_reg)   # B = A * ~A
 
-        if n <= 2:
-            denom    = b_reg[0]
-            g_reg    = np.zeros_like(b_reg)
-            g_reg[0] = 1.0
-        elif n <= 4:
-            g_reg    = b_reg.copy()
-            g_reg[0] *= -1.0
-            d_reg    = fast_mul(g_reg, b_reg)
-            denom    = d_reg[0]
-        else:
-            # n == 5 or 6
-            g_reg    = b_reg.copy()
-            g_reg[0] *= -3.0
-            g_reg    = fast_mul(g_reg, b_reg)
-            g_reg[0] *= -1.0
-            g_reg    = fast_mul(g_reg, b_reg)
-            g_reg[0] *= (-1.0 / 3.0)
-            i_reg    = g_reg.copy()            # adjugate of B
-            g_reg    = fast_mul(g_reg, b_reg)  # now scalar
-            denom    = g_reg[0]
-            g_reg    = i_reg                   # restore for return path
+        g_reg    = b_reg.copy()
+        g_reg[0] *= -3.0
+        g_reg    = fast_mul(g_reg, b_reg)
+        g_reg[0] *= -1.0
+        g_reg    = fast_mul(g_reg, b_reg)
+        g_reg[0] *= (-1.0 / 3.0)
+        i_reg    = g_reg.copy()            # adjugate of B
+        g_reg    = fast_mul(g_reg, b_reg)  # now scalar
+        denom    = g_reg[0]
+        g_reg    = i_reg                   # restore for return path
 
         inv_b_reg = g_reg * (1.0 / denom)     # singular → inf
         return fast_mul(rev_a_reg, inv_b_reg)
@@ -143,7 +132,7 @@ def _get_kernel():
         )
     table_id = id(table)
     if table_id != _cached_table_id:
-        _cached_kernel   = _make_jones_kernel(table.fast_mul)
+        _cached_kernel   = _make_sri_kernel(table.fast_mul)
         _cached_table_id = table_id
     return _cached_kernel
 
@@ -152,7 +141,7 @@ def _get_kernel():
 # Public interface
 # ---------------------------------------------------------------------------
 
-def jones_inverse(A: np.ndarray) -> np.ndarray:
+def jones_inverse(A: Accum) -> Accum:
     """Compute the multiplicative inverse of *A* using the Jones algorithm.
 
     Valid for non-singular multivectors in algebras of dimension ≤ 6.
@@ -199,9 +188,9 @@ def jones_inverse(A: np.ndarray) -> np.ndarray:
     For ``d ≥ 7`` use :func:`clifford.inverse.shirokov.shirokov_inverse`.
     """
     n = A.dimensions
-    if n > 6:
+    if n != 6:
         raise ValueError(
-            f"jones_inverse is limited to dimensions ≤ 6; "
+            f"sri_inverse is limited to dimension = 6; "
             f"this multivector has dimension {n}. "
             f"Use clifford.inverse.shirokov.shirokov_inverse instead."
         )
