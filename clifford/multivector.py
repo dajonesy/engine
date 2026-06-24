@@ -167,6 +167,20 @@ class Accum:
             return NotImplemented
         return A
 
+    def __rsub__(self,other):
+        if isinstance(other, (int, float)):
+            A = self.copy()
+            for i in range(self.bases):
+                A.Reg[i] = -A.Reg[i]
+            A.Reg[0] += other
+        elif isinstance(other, int[:], float[:]):
+            A = Accum()
+            for i in range(self.bases):
+                A.Reg[i] = other[i] - self.Reg[i]
+        else:
+            return NotImplemented
+        return A
+    
     def __rmul__(self, other):
         """Left-multiply by a real scalar: ``scalar * A``.
 
@@ -190,7 +204,7 @@ class Accum:
         if isinstance(other, (int, float)):
             for i in range(self.bases):
                 A.Reg[i] = other * self.Reg[i]
-        elif isinstance(other, (list, tuple)):
+        elif isinstance(other, (list, tuple, np.ndarray)):
             for i in range(self.bases):
                 A.Reg[i] = other[i] * self.Reg[i]
         else:
@@ -223,11 +237,28 @@ class Accum:
             A.Reg = Clif._ActiveTable.fast_mul(self.Reg, other.Reg)
         else:
             raise NotImplementedError(
-                "Dimensions >= 8 do not yet have an optimised multiplier. "
+                "Dimensions > 8 do not yet have an optimised multiplier. "
                 "Contribute one via clifford/sign_table.py."
             )
         return A
 
+    def inverse(self):
+        """Returns the multiplicative inverse of the multivector."""
+        # Your inversion logic here (e.g., using shirokov's method or reversion)
+        pass
+        return None
+
+    def __truediv__(self, other):
+        # A / B is mathematically A * B.inverse()
+        if isinstance(other, Multivector):
+            return self * other.inverse()
+        # Handle scalar division
+        return self * (1 / other)
+
+    def __rtruediv__(self, other):
+        # Handle cases like 1 / A
+        return other * self.inverse()
+    
     # ------------------------------------------------------------------
     # Equality
     # ------------------------------------------------------------------
@@ -374,26 +405,6 @@ class Accum:
                 other.Reg[i] = -other.Reg[i]
         return other
 
-    def automorph(self) -> 'Accum':
-        """Grade involution.
-
-        Negates coefficients of odd grade (grade mod 2 == 1).
-
-        Returns
-        -------
-        Accum
-            The grade involution of ``self``; ``self`` is not modified.
-
-        Notes
-        -----
-        Equivalent to Lounesto's ``Â`` notation.
-        """
-        other = self.copy()
-        for i in range(self.bases):
-            if Clif.Grade[i] & 1:   # odd grade
-                other.Reg[i] = -other.Reg[i]
-        return other
-
     # ------------------------------------------------------------------
     # Scalar test
     # ------------------------------------------------------------------
@@ -410,3 +421,21 @@ class Accum:
             if abs(self.Reg[i]) >= Accum.SMALL:
                 return False
         return True
+
+    def random(self):
+        """Return random values
+
+        Returns
+        -------
+        Accum
+            Random values
+
+        Notes
+        -----
+        With this method, choice of signature and dimension have already been decided.
+        We just get some random value.
+        Principly used for testing.
+        
+        """
+        self.Reg = np.random.normal(0.0, 1.0, self.bases)
+        return

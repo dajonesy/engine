@@ -12,6 +12,7 @@ This module provides:
   :func:`invert_by_grade`, :func:`test_clear_grade`, :func:`test_equality`
 * **Subspace tests** — :func:`closed_test`, :func:`xor_test`,
   :func:`complement_test`, :func:`all_test`
+* **FLS involution** — :func:`inverse_involution`, :func:`_involution_fix`
 * **Inverse algorithms** (dimension-specific closed forms):
   :func:`I4`, :func:`I5`, :func:`I6`
 
@@ -120,18 +121,17 @@ def print2_sparse(A: Accum, B: Accum) -> None:
 # Construction
 # ---------------------------------------------------------------------------
 
-def random(signature: int, dimensions: int) -> Accum:
-    """Construct a random multivector in the given algebra.
+def random(layout) -> Accum:
+    """Construct a random multivector for the given signature layout.
 
-    Calls :func:`clifford.context.Initialize` to configure the algebra, then
+    Calls :func:`clifford.context.Layout` to configure the algebra, then
     fills all ``2^d`` coefficients with independent standard-normal samples.
 
     Parameters
     ----------
-    signature : int
-        Signature bitmask (see :func:`clifford.context.Initialize`).
-    dimensions : int
-        Number of basis vectors.
+    layout : list[int]
+        Signature list, e.g. ``[1, 1, 1, 1]`` for Euclidean 4D or
+        ``[1, -1, -1, -1]`` for spacetime algebra.
 
     Returns
     -------
@@ -142,13 +142,13 @@ def random(signature: int, dimensions: int) -> Accum:
     --------
     ::
 
-        A = random(signature=0, dimensions=6)   # random element of Cl(6,0)
+        A = random([1, 1, 1, 1])    # random element of Cl(4,0)
+        A = random([1, -1, -1, -1]) # random element of STA
     """
-    Clif.Initialize(dimensions, signature)
+    Clif.Layout(layout)
     A = Accum()
     A.Reg = np.random.normal(0.0, 1.0, Clif.bases())
     return A
-
 
 def grade_restricted_random(grades: list) -> Accum:
     """Construct a random multivector supported on the given grades.
@@ -260,6 +260,61 @@ def invert_by_grade(B: Accum, grades: list) -> Accum:
         A new multivector.
     """
     return involve(B, grades)
+
+
+# ---------------------------------------------------------------------------
+# FLS involution arrays
+# ---------------------------------------------------------------------------
+
+def _involution_fix(dim: int) -> np.ndarray:
+    """Thue-Morse block pattern for the FLS involution.
+
+    Returns a float64 array of length ``2^dim``.  Blocks of size
+    ``2^dim / 2^((dim-5)//2)`` carry alternating signs determined by
+    ``(-1)^popcount(block_index)`` (the Thue-Morse sequence).
+
+    Parameters
+    ----------
+    dim : int
+        Algebra dimension, 6 <= dim <= 13.
+    """
+    size       = 1 << dim
+    num_blocks = 1 << ((dim - 5) // 2)
+    block_size = size // num_blocks
+    fix        = np.empty(size, dtype=np.float64)
+    for n in range(num_blocks):
+        sign = 1 - 2 * (bin(n).count('1') % 2)
+        fix[n * block_size:(n + 1) * block_size] = sign
+    return fix
+
+
+def inverse_involution(dim: int) -> np.ndarray:
+    """Return the FLS involution sign array for dimension *dim*.
+
+    The involution combines the reversion sign (``[+1,+1,−1,−1]`` by
+    grade mod 4) with a Thue-Morse block pattern that keeps the
+    intermediate ``C = A * invol(A)`` in a stable active subspace
+    throughout the FLS polynomial iteration.
+
+    The result is a float64 array of length ``2^dim`` with values in
+    ``{-1, +1}``; element-wise multiply with ``A.Reg`` to apply the
+    involution.
+
+    Parameters
+    ----------
+    dim : int
+        Algebra dimension, 6 <= dim <= 13.
+
+    Returns
+    -------
+    numpy.ndarray, shape (2**dim,), dtype float64
+    """
+    fix  = _involution_fix(dim)
+    size = 1 << dim
+    return np.array(
+        [[1, 1, -1, -1][3 & int(Clif.Grade[n])] * fix[n] for n in range(size)],
+        dtype=np.float64,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -561,3 +616,48 @@ def I6(A: Accum) -> Accum:
     I = G.copy()
     G *= B    # G is now a scalar
     return ~A * I.scale(1.0 / G.Reg[0])
+
+# =============================================================================
+# 2026.02: copied these routines from util8D.py -- they seem to be general purpose
+
+def GradeRestrictedRandom(grades):
+    A = Clifford.Accum()
+    samples = numpy.random.normal(size=Clifford.bases())
+#    samples = numpy.array( random.normal( 0.0, 1.0, Clifford.bases() ) ).tolist()
+    for i in range(Clifford.bases()):
+        if Clifford.Grade[i] in grades:
+            A.Reg[i] = samples[i]
+    return A
+
+# multivector B, bit index d
+def InvertByBit(d,B):
+    A = B.copy()
+    for i in range(len(A.Reg)):
+        if 0 != i&(1<<d):
+            A.Reg[i] = -A.Reg[i]
+    return A
+
+# multivector B, bit template d
+def InvertByBits(d,B):
+    A = B.copy()
+    for i in range(len(A.Reg)):
+        if 0 != i&d:
+            A.Reg[i] = -A.Reg[i]
+    return A
+
+def InvertByBitForGrades(d,B,G):
+    A = B.copy()
+    for i in range(len(A.Reg)):
+        if 0 != i&(1<<d) and Grade[i] in G:
+            A.Reg[i] = -A.Reg[i]
+    return A
+
+def InvertByGrade(B,G):
+    A = B.copy()
+    for i in range(len(A.Reg)):
+        if Clifford.Grade[i] in G:
+            A.Reg[i] = -A.Reg[i]
+    return A
+
+# =============================================================================
+

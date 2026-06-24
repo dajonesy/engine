@@ -71,7 +71,7 @@ degenerate: int = 0
 #: Grade table: ``Grade[i]`` is the number of set bits in ``i``, i.e. the
 #: grade of the blade whose ordinal index is ``i``.
 #: Recomputed by :func:`Initialize`.
-Grade: list = [0]
+Grade: np.ndarray = []
 
 #: The active :class:`~clifford.sign_table.SignTable` for the current algebra.
 #: Set by :func:`Initialize`; ``None`` until the first call.
@@ -119,7 +119,7 @@ def mask() -> int:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _compute_grade() -> None:
+def _build_grade_table( dimensions: int ) -> np.ndarray:
     """Recompute the :data:`Grade` table for the current :data:`dimensions`.
 
     ``Grade[i]`` equals the number of 1-bits (population count) in ``i``,
@@ -127,10 +127,14 @@ def _compute_grade() -> None:
 
     This function modifies the module global :data:`Grade` in place.
     """
-    global Grade
-    Grade = [0]
-    while len(Grade) < bases():
-        Grade += [g + 1 for g in Grade]
+
+    table = np.empty( 1<<dimensions, dtype=np.uint8 )
+    table[0] = 0
+    for d in range( dimensions ):
+        m = 1<<d
+        for n in range( m ):
+            table[m + n] = 1 + table[n]
+    return table
 
 
 # ---------------------------------------------------------------------------
@@ -148,10 +152,10 @@ def Initialize(d: int, s: int = 0, x: int = 0) -> None:
     d : int
         Number of basis vectors (dimensions of the vector space).
     s : int, optional
-        Signature mask.  Bit *k* is set when basis vector *e*\ (k+1) squares
+        Signature mask.  Bit *k* is set when basis vector *e*\\ (k+1) squares
         to −1.  Default ``0`` gives a fully Euclidean algebra.
     x : int, optional
-        Degeneracy mask.  Bit *k* is set when basis vector *e*\ (k+1) squares
+        Degeneracy mask.  Bit *k* is set when basis vector *e*\\ (k+1) squares
         to 0.  Default ``0`` gives a non-degenerate algebra.
 
     Notes
@@ -175,12 +179,13 @@ def Initialize(d: int, s: int = 0, x: int = 0) -> None:
 
         Initialize(4, x=0b1000)
     """
-    global dimensions, signature, degenerate, _ActiveTable
+    global dimensions, signature, degenerate, Grade, _ActiveTable
     dimensions = d
     signature  = s
     degenerate = x
-    _compute_grade()
-    _ActiveTable = ST.SignTable()
+    Grade = _build_grade_table( d )
+    _ActiveTable = ST.SignTable(d)
+    return
 
 
 def Layout(Signature: list) -> None:
@@ -217,7 +222,23 @@ def Layout(Signature: list) -> None:
         elif w == 0:
             x |= 1
     Initialize(d, s, x)
+    return
 
+def get_signature():
+    global dimensions
+    global signature
+    global degenerate
+    layout = []
+    for d in range(dimensions):
+        mask = 1 << d
+        if 0 != degenerate & mask:
+            this1 = 0
+        elif 0 != signature & mask:
+            this1 = -1
+        else:
+            this1 = 1
+        layout += [ this1 ]
+    return layout        
 
 def Cl(p: int, q: int = 0, r: int = 0) -> None:
     """Configure the algebra as Cl(p, q, r).
@@ -248,7 +269,8 @@ def Cl(p: int, q: int = 0, r: int = 0) -> None:
 
         Cl(4, 1)
     """
-    Layout([1] * p + [-1] * q + [0] * r)
+    Layout( [1]*p + [-1]*q + [0]*r )
+    return
 
 
 # ---------------------------------------------------------------------------

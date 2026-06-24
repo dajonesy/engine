@@ -1,113 +1,196 @@
 # file: clifford/sign_table.py
 """
-Multiplication sign table and Numba-jitted fast multiplier.
+Euclidean keyed virtual sign table for Cl(n, 0).
 
-The geometric product of two basis blades ``e_I`` and ``e_J`` (identified by
-their ordinal bitmasks ``I`` and ``J``) is always a scalar multiple of a
-single basis blade ``e_{I XOR J}``.  The scalar is either +1, −1, or 0
-(for degenerate algebras).  This module pre-computes those scalars into a
-two-dimensional NumPy array and generates a Numba-jitted function that
-uses the table to multiply arbitrary multivectors efficiently.
+The geometric product sign table for a pure Euclidean algebra has the
+structure of a Walsh-Hadamard matrix: every row and every column is a
+Hadamard row identified by a single integer key.  This module computes
+those key arrays at setup time — one key per basis blade for rows and
+columns separately — and provides Numba-jitted multipliers that
+reconstruct sign rows on the fly rather than storing the full table.
 
-Sign computation
-----------------
-The sign of ``e_I * e_J`` is determined by two factors:
+Memory cost  2 * 2^n integers  (vs 4^n bytes for a full int8 table)
+Setup cost   O(n * 2^n)
+Per-product  O(2^n) per sign-row reconstruction inside the inner loop
 
-1. **Metric sign** — the product of the squares of all basis vectors shared
-   by ``I`` and ``J`` (i.e. in ``I AND J``).  A shared vector with negative
-   signature contributes a factor of −1; a degenerate shared vector makes the
-   whole product zero.
+Key arrays
+----------
+For Euclidean Cl(n), the sign table satisfies
 
-2. **Swap count** — the number of adjacent transpositions needed to move the
-   vectors of ``J`` past those of ``I`` when writing the concatenated product
-   in canonical (ascending) order.  Each transposition contributes a factor of
-   −1 via the anti-commutativity of basis vectors.
+    sign[i, j]  =  Hadamard[ row_keys[i],  j ]
+                =  Hadamard[ col_keys[j],  i ]
 
-The combined sign is ``(-1) ** (metric_sign_count + swap_count)``.
+where Hadamard is the Sylvester Walsh-Hadamard matrix of order 2^n.
 
-Dimensions limit
-----------------
-For dimensions < 8 the full ``2^d × 2^d`` sign table fits comfortably in
-memory (at most 128 × 128 = 16 384 bytes as ``int8``), and the Numba
-multiplier is generated at initialisation time.  For dimensions ≥ 8 the
-table and fast multiplier are left as ``None``; a different strategy (e.g.
-on-the-fly sign computation) must be supplied by the caller.
+Row key basis  (for each basis vector e_p, p = 0 .. n-1):
+    v_key[p] = pseudo XOR ((1 << (p+1)) - 1)
+where pseudo = (1 << n) - 1.
+
+Column key basis:
+    c_key[p] = (1 << p) - 1
+
+Both key arrays are built by XOR-ing the appropriate basis keys for
+each set bit in the blade index i.  See the notebook
+scratch/"Signtable -- None vs Keyed vs Tabled.ipynb" for derivation
+and validation.
 """
 
 import numpy as np
 from numba import njit
-import clifford.context as Clif
 
 
 # ---------------------------------------------------------------------------
-# Sign computation (pure Python, runs once at initialisation)
+# Key-array construction (runs once at context initialisation)
 # ---------------------------------------------------------------------------
 
-def _swap_count(bits_left: int, bits_right: int) -> int:
-    """Count the number of anti-commutation swaps for ``e_I * e_J``.
+def euclidean_row_keys(dim: int) -> np.ndarray:
+    """Row keys for the Euclidean Cl(dim) sign table.
 
-    When concatenating the basis vectors of ``e_J`` to the right of those of
-    ``e_I``, each vector of ``e_J`` must step past the vectors of ``e_I`` that
-    sit to its right in the canonical ordering.  Each such step is one swap and
-    contributes a sign change.
+    row_keys[i] is the Hadamard index k such that
+    Hadamard[k, j] == sign(e_i * e_j) for all j.
 
     Parameters
     ----------
-    bits_left : int
-        Ordinal bitmask of the left blade ``e_I``.
-    bits_right : int
-        Ordinal bitmask of the right blade ``e_J``.
+    dim : int
 
     Returns
     -------
-    int
-        Total number of swaps required.
+    numpy.ndarray, shape (2**dim,), dtype int32
     """
-    n_swap = 0
-    n_jump = Clif.Grade[bits_right]   # number of vectors still to be placed
-    mask   = 1
-    while n_jump != 0:
-        if mask & bits_right:
-            n_jump -= 1
-        if mask & bits_left:
-            n_swap += n_jump
-        mask <<= 1
-    return n_swap
-
-
-def _fill_table(size: int, degenerate: int, signature: int) -> np.ndarray:
-    """Build the full sign table as an ``int8`` NumPy array.
-
-    Parameters
-    ----------
-    size : int
-        Side length of the square table; equals ``2 ** dimensions``.
-    degenerate : int
-        Degeneracy bitmask from :mod:`clifford.context`.
-    signature : int
-        Signature bitmask from :mod:`clifford.context`.
-
-    Returns
-    -------
-    numpy.ndarray
-        Array of shape ``(size, size)`` with dtype ``int8``.
-        Entry ``[i, j]`` is +1, −1, or 0.
-    """
-    table = np.zeros((size, size), dtype=np.int8)
+    pseudo = (1 << dim) - 1
+    v_keys = [pseudo ^ ((1 << (p + 1)) - 1) for p in range(dim)]
+    size = 1 << dim
+    keys = np.zeros(size, dtype=np.int32)
     for i in range(size):
-        for j in range(size):
-            common = i & j
-            if common & degenerate:
-                # A degenerate basis vector appears in both blades → product is 0
-                v = 0
-            else:
-                # Count negative-signature shared vectors
-                n = Clif.Grade[common & signature]
-                # Add anti-commutation swaps
-                n += _swap_count(i, j)
-                v = -1 if (n & 1) else 1
-            table[i][j] = v
-    return table
+        k = 0
+        for p in range(dim):
+            if i & (1 << p):
+                k ^= v_keys[p]
+        keys[i] = k
+    return keys
+
+
+def euclidean_col_keys(dim: int) -> np.ndarray:
+    """Column keys for the Euclidean Cl(dim) sign table.
+
+    col_keys[j] is the Hadamard index k such that
+    Hadamard[k, i] == sign(e_i * e_j) for all i.
+
+    Parameters
+    ----------
+    dim : int
+
+    Returns
+    -------
+    numpy.ndarray, shape (2**dim,), dtype int32
+    """
+    c_keys = [(1 << p) - 1 for p in range(dim)]
+    size = 1 << dim
+    keys = np.zeros(size, dtype=np.int32)
+    for j in range(size):
+        k = 0
+        for p in range(dim):
+            if j & (1 << p):
+                k ^= c_keys[p]
+        keys[j] = k
+    return keys
+
+
+# ---------------------------------------------------------------------------
+# Hadamard row reconstruction (Numba, called inside jitted multipliers)
+# ---------------------------------------------------------------------------
+
+@njit(inline='always')
+def _row_from_key(key: int, signs: np.ndarray) -> None:
+    """Fill signs[] with the Walsh-Hadamard row indexed by key.
+
+    Uses the Sylvester construction: each successive bit of key controls
+    whether the next block is copied (+1) or negated (-1).
+
+    Parameters
+    ----------
+    key : int
+        Hadamard row index.
+    signs : numpy.ndarray
+        Pre-allocated int8 buffer; length must equal 2^dim.
+    """
+    signs[0] = 1
+    m = 1
+    k = key
+    size = len(signs)
+    while m < size:
+        if k & 1:
+            for j in range(m):
+                signs[m + j] = -signs[j]
+        else:
+            for j in range(m):
+                signs[m + j] = signs[j]
+        m <<= 1
+        k >>= 1
+
+
+# ---------------------------------------------------------------------------
+# Multiplier factories
+# ---------------------------------------------------------------------------
+
+def make_row_multiplier(row_keys: np.ndarray):
+    """Return a jitted geometric-product function, row-keyed.
+
+    Iterates over components of the left operand u.  Preferred when u
+    is dense or when the standard left-to-right product order is needed.
+
+    Parameters
+    ----------
+    row_keys : numpy.ndarray
+        From euclidean_row_keys(dim).
+
+    Returns
+    -------
+    callable  (u: float64[::1], v: float64[::1]) -> float64[::1]
+    """
+    @njit
+    def multiply(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+        n = len(u)
+        res = np.zeros(n, dtype=np.float64)
+        signs = np.empty(n, dtype=np.int8)
+        for i in range(n):
+            if u[i] == 0.0:
+                continue
+            _row_from_key(row_keys[i], signs)
+            for j in range(n):
+                res[i ^ j] += u[i] * signs[j] * v[j]
+        return res
+    return multiply
+
+
+def make_col_multiplier(col_keys: np.ndarray):
+    """Return a jitted geometric-product function, column-keyed.
+
+    Iterates over components of the right operand v.  Preferred when v
+    is sparse, avoiding sign-row reconstruction for zero-coefficient blades.
+
+    Parameters
+    ----------
+    col_keys : numpy.ndarray
+        From euclidean_col_keys(dim).
+
+    Returns
+    -------
+    callable  (u: float64[::1], v: float64[::1]) -> float64[::1]
+    """
+    @njit
+    def multiply_col(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+        n = len(u)
+        res = np.zeros(n, dtype=np.float64)
+        signs = np.empty(n, dtype=np.int8)
+        for j in range(n):
+            if v[j] == 0.0:
+                continue
+            _row_from_key(col_keys[j], signs)
+            for i in range(n):
+                res[i ^ j] += signs[i] * u[i] * v[j]
+        return res
+    return multiply_col
 
 
 # ---------------------------------------------------------------------------
@@ -115,85 +198,25 @@ def _fill_table(size: int, degenerate: int, signature: int) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 class SignTable:
-    """Pre-computed multiplication sign table for the current algebra context.
+    """Euclidean keyed virtual sign table for Cl(dim, 0).
 
-    An instance is created automatically by :func:`clifford.context.Initialize`
-    and stored in :data:`clifford.context._ActiveTable`.  User code does not
-    normally need to instantiate this class directly.
+    Instantiated by clifford.context.Initialize; user code does not
+    normally construct this directly.
 
     Attributes
     ----------
-    dimensions : int
-        Algebra dimension at the time of construction.
-    size : int
-        Number of basis blades; equals ``2 ** dimensions``.
-    signature : int
-        Signature bitmask at the time of construction.
-    degenerate : int
-        Degeneracy bitmask at the time of construction.
-    table : numpy.ndarray or None
-        The ``(size, size)`` int8 sign table.  ``None`` for dimensions ≥ 8.
-    fast_mul : callable or None
-        Numba-jitted function ``(u_reg, v_reg) -> result_reg`` implementing
-        multivector multiplication.  ``None`` for dimensions ≥ 8.
+    dim : int
+    size : int            2**dim
+    row_keys : ndarray    shape (size,), dtype int32
+    col_keys : ndarray    shape (size,), dtype int32
+    fast_mul : callable   jitted row-keyed geometric product
+    fast_mul_col : callable   jitted column-keyed geometric product
     """
 
-    def __init__(self) -> None:
-        self.dimensions = Clif.dimensions
-        self.size       = 1 << Clif.dimensions
-        self.signature  = Clif.signature
-        self.degenerate = Clif.degenerate
-
-        if self.dimensions < 8:
-            self.table    = _fill_table(self.size, self.degenerate, self.signature)
-            self.fast_mul = self._create_multiplier()
-        else:
-            self.table    = None
-            self.fast_mul = None
-
-    def _create_multiplier(self):
-        """Generate a Numba-jitted multiplier closed over the sign table.
-
-        Returns
-        -------
-        callable
-            A function ``multiply(u_reg, v_reg) -> numpy.ndarray`` that
-            computes the geometric product of two multivectors given as
-            coefficient arrays.
-
-        Notes
-        -----
-        The table is captured by reference into the Numba closure at the time
-        this method is called.  Subsequent calls to :func:`Initialize` create
-        a *new* :class:`SignTable` instance and a new closure; any
-        :class:`~clifford.multivector.Accum` objects still holding a reference
-        to the old table will continue to use the old multiplier.
-        """
-        table = self.table   # captured by the closure below
-
-        @njit
-        def multiply(u_reg: np.ndarray, v_reg: np.ndarray) -> np.ndarray:
-            """Geometric product of two multivector coefficient arrays.
-
-            Parameters
-            ----------
-            u_reg : numpy.ndarray
-                Coefficient array of the left multivector.
-            v_reg : numpy.ndarray
-                Coefficient array of the right multivector.
-
-            Returns
-            -------
-            numpy.ndarray
-                Coefficient array of the product, same shape as inputs.
-            """
-            res = np.zeros_like(u_reg)
-            for i in range(len(u_reg)):
-                if u_reg[i] == 0.0:
-                    continue
-                row = table[i]          # contiguous row — cache-friendly
-                for j in range(len(v_reg)):
-                    res[i ^ j] += u_reg[i] * (row[j] * v_reg[j])
-            return res
-
-        return multiply
+    def __init__(self, dim: int) -> None:
+        self.dim          = dim
+        self.size         = 1 << dim
+        self.row_keys     = euclidean_row_keys(dim)
+        self.col_keys     = euclidean_col_keys(dim)
+        self.fast_mul     = make_row_multiplier(self.row_keys)
+        self.fast_mul_col = make_col_multiplier(self.col_keys)

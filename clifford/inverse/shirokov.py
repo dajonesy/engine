@@ -1,6 +1,9 @@
 # file: clifford/inverse/shirokov.py
 """
-The Shirokov–Lounesto multivector inverse.
+The Faddeev–LeVerrier–Souriau multivector inverse.
+
+This module implements the Faddeev–LeVerrier–Souriau (FLS) algorithm as
+applied to Clifford algebras by Shirokov (2011) and noted in Lounesto (2001).
 
 This module implements the algorithm described by Shirokov (2011) and noted in
 Lounesto (2001).  It is valid for Clifford algebras of any dimension, though
@@ -190,3 +193,88 @@ def shirokov_inverse(U: Accum) -> Accum:
     result = Accum()
     result.Reg = adj_reg * (1.0 / denom)
     return result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Smoke-test / timing harness
+# ──────────────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import time
+
+    TIMING_CALLS = 10000
+    N_VERIFY     = 200
+    TOL          = 1e-6
+
+    # Test one representative signature per dimension.
+    # Euclidean (all +1) is the cleanest; Minkowski added for d=4 as a bonus.
+    test_cases = [
+        (1, [1],                   "Euclidean 1D              [1]"),
+        (2, [1, 1],                "Euclidean 2D            [1,1]"),
+        (3, [1, 1, 1],             "Euclidean 3D          [1,1,1]"),
+        (4, [1, 1, 1, 1],          "Euclidean 4D        [1,1,1,1]"),
+        (4, [1,-1,-1,-1],          "Minkowski STA    [1,-1,-1,-1]"),
+        (5, [1, 1, 1, 1, 1],       "Euclidean 5D      [1,1,1,1,1]"),
+        (6, [1, 1, 1, 1, 1, 1],    "Euclidean 6D    [1,1,1,1,1,1]"),
+        (7, [1, 1, 1, 1, 1, 1, 1], "Euclidean 7D  [1,1,1,1,1,1,1]"),
+    ]
+
+    print(f"\n{'═'*60}")
+    print("  Shirokov–Lounesto inverse  —  timing & correctness")
+    print(f"{'═'*60}")
+    print(f"  {'Signature':<28} {'ops':>4}  {'JIT ms':>7}  "
+          f"{'ns/call':>8}  {'Mcall/s':>7}  {'result':>6}")
+    print(f"  {'─'*28} {'─'*4}  {'─'*7}  {'─'*8}  {'─'*7}  {'─'*6}")
+
+    for dim, sig, label in test_cases:
+
+        # ── initialise algebra ────────────────────────────────────────────
+        Clif.Layout(sig)              # sets _ActiveTable, fast_mul, etc.
+        N_steps = (1 << ((dim + 1) // 2)) - 1   # op count
+
+        # ── JIT compile ──────────────────────────────────────────────────
+        t0 = time.perf_counter()
+        _cached_kernel   = None      # force rebuild for fresh algebra
+        _cached_table_id = None
+        warmup = Accum()
+        warmup.Reg = np.random.normal(0.0, 1.0, Clif.bases())
+        try:
+            _ = shirokov_inverse(warmup)
+        except ValueError:
+            pass
+        compile_ms = (time.perf_counter() - t0) * 1e3
+
+        # ── correctness ───────────────────────────────────────────────────
+        passed = failed = skipped = 0
+        for _ in range(N_VERIFY):
+            A = Accum()
+            A.random()
+            try:
+                iA   = shirokov_inverse(A)
+                prod = (iA * A).Reg
+                err  = abs(prod[0] - 1.0) + np.sum(np.abs(prod[1:]))
+                if err < TOL:
+                    passed += 1
+                else:
+                    failed += 1
+            except ValueError:
+                skipped += 1
+
+        status = "✓ PASS" if failed == 0 else f"✗ {failed} FAIL"
+
+        # ── throughput ────────────────────────────────────────────────────
+        A_fixed = Accum()
+        A_fixed.Reg = np.random.normal(0.0, 1.0, Clif.bases())
+        t0 = time.perf_counter()
+        for _ in range(TIMING_CALLS):
+            shirokov_inverse(A_fixed)
+        elapsed = time.perf_counter() - t0
+        ns_per  = elapsed / TIMING_CALLS * 1e9
+        mps     = TIMING_CALLS / elapsed / 1e6
+        print(f"  {label:<28} {N_steps:>4}  {compile_ms:>7.0f}  "
+              f"{ns_per:>7.0f}  {mps:>6.4f}  {status}")
+
+    print(f"\n  {TIMING_CALLS:,} calls per timing run, "
+          f"{N_VERIFY} random multivectors verified per signature")
+    print(f"  ops = multivector multiplications per inverse call")
+    print(f"{'═'*60}")

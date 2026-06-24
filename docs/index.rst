@@ -11,13 +11,19 @@ behind it for when you need details.
    :maxdepth: 2
    :caption: Examples
 
-   examples/inverting_7d
+   inverting_7d
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Performance
+
+   fls_performance
 
 .. toctree::
    :maxdepth: 2
    :caption: API reference
 
-   api/clifford
+   clifford
 
 
 Indices

@@ -56,8 +56,7 @@ import numpy as np
 from numba import njit
 
 import clifford.context as Clif
-#from clifford.multivector import Accum
-
+from clifford.multivector import Accum
 
 def _make_jones_kernel(fast_mul):
     """Factory that closes a Numba kernel over the active multiplier.
@@ -152,7 +151,7 @@ def _get_kernel():
 # Public interface
 # ---------------------------------------------------------------------------
 
-def jones_inverse(A: np.ndarray) -> np.ndarray:
+def jones_inverse( A: Accum ) -> Accum:
     """Compute the multiplicative inverse of *A* using the Jones algorithm.
 
     Valid for non-singular multivectors in algebras of dimension ≤ 6.
@@ -161,14 +160,12 @@ def jones_inverse(A: np.ndarray) -> np.ndarray:
 
     Parameters
     ----------
-    A : Accum
-        A non-singular multivector in the current algebra.
+    A : multivector register in the current algebra.
 
     Returns
     -------
-    Accum
-        The multiplicative inverse of *A*, satisfying
-        ``jones_inverse(A) * A ≈ 1``.
+    The computed multivector register designating the multiplicative inverse of *A*, 
+    satisfying ``jones_inverse(A) * A ≈ 1``.
 
     Raises
     ------
@@ -183,12 +180,11 @@ def jones_inverse(A: np.ndarray) -> np.ndarray:
     ::
 
         import clifford.context as Clif
-        import clifford.util as util
         from clifford.inverse.jones import jones_inverse
 
         Clif.Cl(6)
-        A = util.random(signature=0, dimensions=6)
-        I = jones_inverse(A)
+        A = Accum.random( )
+        I = jones_inverse( A )
         print(I * A)    # 00000000         1.00000000
 
     Notes
@@ -199,6 +195,7 @@ def jones_inverse(A: np.ndarray) -> np.ndarray:
     For ``d ≥ 7`` use :func:`clifford.inverse.shirokov.shirokov_inverse`.
     """
     n = A.dimensions
+    revA = ~A
     if n > 6:
         raise ValueError(
             f"jones_inverse is limited to dimensions ≤ 6; "
@@ -206,9 +203,9 @@ def jones_inverse(A: np.ndarray) -> np.ndarray:
             f"Use clifford.inverse.shirokov.shirokov_inverse instead."
         )
 
-    kernel     = _get_kernel()
-    result     = Accum()
-    result.Reg = kernel(A.Reg, (~A).Reg, n)
+    kernel = _get_kernel()
+    result = Accum()
+    result.Reg = kernel( A.Reg, revA.Reg, n)
 
     if not np.isfinite(result.Reg).all():
         raise ValueError(
@@ -217,3 +214,41 @@ def jones_inverse(A: np.ndarray) -> np.ndarray:
         )
 
     return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Demo / smoke-test
+# ──────────────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import time
+    import clifford.context as Clif
+    from clifford.inverse.jones import jones_inverse
+
+    Clif.Cl(6)
+
+    test_sigs = {
+        "Euclidean 6D      [ 1, 1, 1, 1, 1, 1]"  : [ 1, 1, 1, 1, 1, 1],
+        "Anti-Euclidean    [-1,-1,-1,-1,-1,-1]"  : [-1,-1,-1,-1,-1,-1],
+        "Fully Degenerate  [ 0, 0, 0, 0, 0, 0]"  : [ 0, 0, 0, 0, 0, 0],
+        "Mixed             [ 1, 1,-1,-1, 0, 0]"  : [ 1, 1,-1,-1, 0, 0],
+    }
+
+    TIMING_CALLS = 1000   # calls per timing run
+
+    for label, sig in test_sigs.items():
+        print(f"\n{'─'*55}")
+        print(f"  {label}")
+
+        t0  = time.perf_counter()
+        Clif.Layout(sig)
+        A = Accum()
+        _ = jones_inverse(A) # warmup
+        compile_ms = (time.perf_counter() - t0) * 1e3
+        print(f"  setup+JIT : {compile_ms:7.1f} ms")
+
+        A = Accum.random()
+        t0  = time.perf_counter()
+        for i in range(TIMING_CALLS):
+            iA = jones_inverse(A)
+        runtime_ms = (time.perf_counter() - t0)/TIMING_CALLS * 1e3
+        print(f" average run time : {runtime_ms:7.1f} ms")

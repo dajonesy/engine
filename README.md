@@ -1,7 +1,8 @@
-# clif
+# clifford
 
-A lightweight Python toolkit for computations in Clifford / geometric
-algebras, with an emphasis on **fast inverses in high dimensions**.
+A research toolkit for computations in Clifford / geometric algebras, with an emphasis on
+**fast multivector inverses**, including a 6D inverse and an emerging dimension-independent
+approach.
 
 > **Status:** research prototype, not yet a packaged release.
 > The API is unstable and the test suite is still being built out.
@@ -11,35 +12,39 @@ algebras, with an emphasis on **fast inverses in high dimensions**.
 
 ## What's here
 
-The current focus is on multivector inversion in 7D Clifford algebras:
+The package implements Clifford algebra with explicit ordinal indexing of multivector
+components, efficient sign-table-based multiplication, and support for arbitrary metric
+signature and degeneracy. It's organized as four cooperating layers:
 
-- `clif.inverse.self_reverse_7d.sri7_inverse` — inner-kernel inverse for
-  multivectors already in the form `W = U · b₂,₃,₆(U)` (supported on
-  a 56-slot subspace of the algebra).
-- `clif.inverse.self_reverse_7d.i7_inverse` — full Abdulkhaev–Shirokov
-  pipeline for inverting a general 7D multivector.  Calls the inner
-  kernel under the hood with bookend multiplies before and after.
+- `clifford.context` — global algebra state (dimension, signature, degeneracy, grade table).
+- `clifford.sign_table` — builds/caches the multiplication sign table and a Numba-jitted fast
+  multiplier for dimensions < 8.
+- `clifford.multivector` — the `Accum` class, a multivector as a NumPy array of real
+  coefficients indexed by ordinal.
+- `clifford.util` — construction, printing, grade projection, involutions, and inverses for
+  specific dimensions.
 
-Both kernels are JIT-compiled with Numba and run in the tens of
-microseconds on commodity hardware.
+Inverse algorithms live in `clifford.inverse`:
+
+- `clifford.inverse.jones` — the Jones inverse, valid for dimensions ≤ 6.
+- `clifford.inverse.shirokov` — the Shirokov–Lounesto algorithm, valid for any dimension but
+  more expensive.
+- `clifford.inverse.fls`, `clifford.inverse.sparse_fls`, `clifford.inverse.euclidean`,
+  `clifford.inverse.newton` — faster, JIT-compiled inverse routines under active development.
 
 ## A worked example
 
 ```python
-import clif.util as util
-import clif.multivector as mv
-from clif.inverse.self_reverse_7d import i7_inverse
+import clifford.context as Clif
+from clifford.multivector import Accum
+import clifford.util as util
 
-# 1. Build a random multivector in Cl(7, 0, 0).
-A = util.random(signature=0, dimensions=7)
+Clif.Cl(3)                     # Euclidean 3D algebra  Cl(3,0)
+A = util.random(signature=0, dimensions=3)
+print(A)
 
-# 2. Invert.  i7_inverse takes the 128-coefficient array and returns
-#    the 128-coefficient array of A^{-1}.
-iA = mv.Accum()
-iA.Reg = i7_inverse(A.Reg)
-
-# 3. Verify: iA * A should be a clean unit scalar.
-print(iA * A)
+Clif.Cl(1, 3)                  # spacetime algebra  Cl(1,3)
+Clif.Layout([1, -1, -1, -1])   # equivalent, explicit
 ```
 
 ## Documentation
@@ -54,4 +59,4 @@ Then open `docs/_build/html/index.html` in a browser.
 
 ## License
 
-MIT.  See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

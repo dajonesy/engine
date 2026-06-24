@@ -68,23 +68,22 @@ Authors
 D. A. Jones  (original implementation)
 """
 
+# ---- nice for the developer ---- (maybe)
 from clifford import context
 from clifford import sign_table
 from clifford import multivector
 from clifford import util
-from clifford import inverse
 
-# Expose the most-used initialisation entry points at the package level
-# so users can write ``import clifford; clifford.Cl(3)`` if they prefer.
-from clifford.context import Initialize, Layout, Cl
+# ---- all a user should need ----
+from clifford.context import Cl,Grade
+from clifford.multivector import Accum
 
 __all__ = [
     "context",
     "sign_table",
     "multivector",
     "util",
-    "inverse",
-    "Initialize",
-    "Layout",
     "Cl",
+    "Grade",
+    "Accum"
 ]

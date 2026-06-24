@@ -14,9 +14,14 @@
 
    .. autosummary::
    
+      GradeRestrictedRandom
       I4
       I5
       I6
+      InvertByBit
+      InvertByBitForGrades
+      InvertByBits
+      InvertByGrade
       all_test
       closed_test
       complement_test
