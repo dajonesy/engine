@@ -26,25 +26,24 @@ signature and degeneracy. It's organized as four cooperating layers:
 
 Inverse algorithms live in `clifford.inverse`:
 
-- `clifford.inverse.jones` — the Jones inverse, valid for dimensions ≤ 6.
-- `clifford.inverse.shirokov` — the Shirokov–Lounesto algorithm, valid for any dimension but
-  more expensive.
-- `clifford.inverse.fls`, `clifford.inverse.sparse_fls`, `clifford.inverse.euclidean`,
-  `clifford.inverse.newton` — faster, JIT-compiled inverse routines under active development.
+- `clifford.inverse.fls` (and `clifford.inverse.sparse_fls`) — Faddeev–LeVerrier–Souriau based
+  inverses, with even/odd-graded variants.
+- `clifford.inverse.euclidean` — inverse for Euclidean (positive-definite) signatures.
+- `clifford.inverse.newton` — iterative refinement via Newton–Schulz.
 
 ## A worked example
 
 ```python
-import clifford.context as Clif
+from clifford.context import Cl, Layout
 from clifford.multivector import Accum
-import clifford.util as util
 
-Clif.Cl(3)                     # Euclidean 3D algebra  Cl(3,0)
-A = util.random(signature=0, dimensions=3)
+Cl(1, 1, 1)        # algebra with 1 positive, 1 negative, 1 null basis vector
+A = Accum()
+A.random()
 print(A)
 
-Clif.Cl(1, 3)                  # spacetime algebra  Cl(1,3)
-Clif.Layout([1, -1, -1, -1])   # equivalent, explicit
+Cl(1, 3)                  # spacetime algebra  Cl(1,3)
+Layout([1, -1, -1, -1])   # equivalent, explicit
 ```
 
 ## Documentation

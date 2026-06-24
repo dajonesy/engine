@@ -27,6 +27,7 @@
       complement_test
       grade
       grade_restricted_random
+      inverse_involution
       invert_by_bit
       invert_by_bits
       invert_by_grade

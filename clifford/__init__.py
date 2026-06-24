@@ -25,11 +25,10 @@ The package is organized as four cooperating layers:
    multivectors (grade projection, involutions, random multivectors, inverses
    for specific dimensions).
 
-Inverse algorithms live in the :mod:`clifford.inverse` sub-package:
-
-- :mod:`clifford.inverse.jones` — the Jones inverse, valid for dimensions ≤ 6.
-- :mod:`clifford.inverse.shirokov` — the Shirokov–Lounesto algorithm, valid for
-  any dimension but more expensive.
+Inverse algorithms live in the :mod:`clifford.inverse` sub-package: :func:`clifford.inverse.fls_inverse`
+(Faddeev–LeVerrier–Souriau based, with :func:`even_inverse`/:func:`odd_inverse` variants and
+sparse counterparts), :func:`clifford.inverse.euclidean_inverse`, and
+:func:`clifford.inverse.newton_schulz` (iterative refinement).
 
 Ordinal indexing convention
 ---------------------------
@@ -52,16 +51,16 @@ Quick start
 -----------
 ::
 
-    import clifford.context as Clif
+    from clifford.context import Cl, Layout
     from clifford.multivector import Accum
-    import clifford.util as util
 
-    Clif.Cl(3)                     # Euclidean 3D algebra  Cl(3,0)
-    A = util.random(signature=0, dimensions=3)
+    Cl(1, 1, 1)        # algebra with 1 positive, 1 negative, 1 null basis vector
+    A = Accum()
+    A.random()
     print(A)
 
-    Clif.Cl(1, 3)                  # spacetime algebra  Cl(1,3)
-    Clif.Layout([1, -1, -1, -1])   # equivalent, explicit
+    Cl(1, 3)                  # spacetime algebra  Cl(1,3)
+    Layout([1, -1, -1, -1])   # equivalent, explicit
 
 Authors
 -------
