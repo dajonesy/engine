@@ -7,6 +7,7 @@ codebase.
 ```{toctree}
 :maxdepth: 1
 
+model_inverses
 api_examples
 fls_sri_walkthrough
 ns_iteration
