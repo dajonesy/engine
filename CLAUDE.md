@@ -24,11 +24,15 @@ The package is organized as four cooperating layers (see `clifford/__init__.py` 
 for the full quick-start):
 
 1. `clifford.context` — global algebra state (dimension, signature, degeneracy, grade table).
-   Configure the algebra with `context.Cl(p, q=0)` or `context.Layout([...])` before
+   Configure the algebra with `context.Cl(p, q=0, r=0)` or `context.Layout([...])` before
    constructing any multivectors.
 2. `clifford.sign_table` — builds/caches the multiplication sign table and generates a
-   Numba-jitted fast multiplier for dimensions < 8. `sign_table_old.py` is a superseded
-   version kept for reference — don't extend it.
+   Numba-jitted fast multiplier for dimensions < 8. Supports the full algebra family
+   Cl(p, q, r): `neg_mask` (basis vectors squaring to −1) is corrected into the key arrays
+   at setup time; `deg_mask` (null basis vectors) is enforced as a zero-contribution check
+   in the inner product loop. All three context entry points (`Cl`, `Layout`, `Initialize`)
+   propagate these masks automatically. `sign_table_old.py` is a superseded version kept
+   for reference — don't extend it.
 3. `clifford.multivector` — the `Accum` class: a multivector as a NumPy array of real
    coefficients indexed by ordinal (binary representation names the basis blade, e.g.
    `5 = 0b101 = e1^e3`). Note: this ordinal ordering differs from the graded lexicographic
@@ -37,9 +41,9 @@ for the full quick-start):
 4. `clifford.util` — construction/printing/grade-projection/involution helpers and
    dimension-specific inverses.
 
-`clifford.inverse` holds the inverse algorithms: `jones` (valid ≤6D), `shirokov`
-(any dimension, more expensive), and newer general-purpose work in `fls.py` (Faddeev–LeVerrier–
-Souriau based), `sparse_fls.py`, `newton.py` (Newton–Schulz iteration), `euclidean.py`.
+`clifford.inverse` holds the inverse algorithms: `fls.py` (Faddeev–LeVerrier–Souriau based,
+with even/odd-graded variants), `sparse_fls.py`, `newton.py` (Newton–Schulz refinement), and
+`euclidean.py` (Euclidean Cl(d, 0), dimensions 6–13).
 
 ## Repo hygiene — research scratch vs. real package code
 
