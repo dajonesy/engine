@@ -29,7 +29,11 @@ extensions = [
     'sphinx.ext.viewcode',      # adds [source] links next to each function
     'sphinx.ext.intersphinx',   # cross-links to numpy/python/numba docs
     'sphinx.ext.mathjax',       # renders the LaTeX in your docstrings
+    'myst_nb',                  # execute and render Jupyter notebooks
 ]
+
+nb_execution_mode = "cache"     # re-execute only when notebook source changes
+nb_execution_timeout = 600      # seconds per notebook
 
 # Have autosummary build per-module rst stubs automatically.
 autosummary_generate = True
@@ -57,7 +61,7 @@ intersphinx_mapping = {
 }
 
 templates_path   = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '**.ipynb_checkpoints']
 
 
 # -- HTML output -------------------------------------------------------------

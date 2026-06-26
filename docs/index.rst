@@ -25,6 +25,12 @@ behind it for when you need details.
 
    clifford
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Development Notebooks
+
+   notebooks/development/index
+
 
 Indices
 =======
