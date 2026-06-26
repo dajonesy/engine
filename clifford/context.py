@@ -184,7 +184,7 @@ def Initialize(d: int, s: int = 0, x: int = 0) -> None:
     signature  = s
     degenerate = x
     Grade = _build_grade_table( d )
-    _ActiveTable = ST.SignTable(d)
+    _ActiveTable = ST.SignTable(d, s, x)
     return
 
 

@@ -1,6 +1,6 @@
 # file: clifford/sign_table.py
 """
-Euclidean keyed virtual sign table for Cl(n, 0).
+Keyed virtual sign table for Cl(n, 0) and non-degenerate Cl(p, q).
 
 The geometric product sign table for a pure Euclidean algebra has the
 structure of a Walsh-Hadamard matrix: every row and every column is a
@@ -33,6 +33,18 @@ Both key arrays are built by XOR-ing the appropriate basis keys for
 each set bit in the blade index i.  See the notebook
 scratch/"Signtable -- None vs Keyed vs Tabled.ipynb" for derivation
 and validation.
+
+Non-Euclidean extension
+-----------------------
+For Cl(p, q) with neg_mask encoding which basis vectors square to -1
+(bit k set  ↔  e_{k+1}² = -1), the corrected keys are:
+
+    row_keys[i] ^= (i & neg_mask)
+    col_keys[j] ^= (j & neg_mask)
+
+The correction at each basis position 1<<k is exactly 1<<k when e_{k+1}
+is negative and 0 otherwise; it propagates correctly to all blades
+because the full key arrays are built by XOR-ing basis keys.
 """
 
 import numpy as np
@@ -133,7 +145,7 @@ def _row_from_key(key: int, signs: np.ndarray) -> None:
 # Multiplier factories
 # ---------------------------------------------------------------------------
 
-def make_row_multiplier(row_keys: np.ndarray):
+def make_row_multiplier(row_keys: np.ndarray, deg_mask: int = 0):
     """Return a jitted geometric-product function, row-keyed.
 
     Iterates over components of the left operand u.  Preferred when u
@@ -142,28 +154,47 @@ def make_row_multiplier(row_keys: np.ndarray):
     Parameters
     ----------
     row_keys : numpy.ndarray
-        From euclidean_row_keys(dim).
+        From euclidean_row_keys(dim), possibly corrected for neg_mask.
+    deg_mask : int, optional
+        Bitmask of degenerate (null) basis vectors.  Any product
+        e_I * e_J where I & J & deg_mask != 0 contributes zero.
 
     Returns
     -------
     callable  (u: float64[::1], v: float64[::1]) -> float64[::1]
     """
-    @njit
-    def multiply(u: np.ndarray, v: np.ndarray) -> np.ndarray:
-        n = len(u)
-        res = np.zeros(n, dtype=np.float64)
-        signs = np.empty(n, dtype=np.int8)
-        for i in range(n):
-            if u[i] == 0.0:
-                continue
-            _row_from_key(row_keys[i], signs)
-            for j in range(n):
-                res[i ^ j] += u[i] * signs[j] * v[j]
-        return res
+    if deg_mask:
+        @njit
+        def multiply(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+            n = len(u)
+            res = np.zeros(n, dtype=np.float64)
+            signs = np.empty(n, dtype=np.int8)
+            for i in range(n):
+                if u[i] == 0.0:
+                    continue
+                _row_from_key(row_keys[i], signs)
+                for j in range(n):
+                    if i & j & deg_mask:
+                        continue
+                    res[i ^ j] += u[i] * signs[j] * v[j]
+            return res
+    else:
+        @njit
+        def multiply(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+            n = len(u)
+            res = np.zeros(n, dtype=np.float64)
+            signs = np.empty(n, dtype=np.int8)
+            for i in range(n):
+                if u[i] == 0.0:
+                    continue
+                _row_from_key(row_keys[i], signs)
+                for j in range(n):
+                    res[i ^ j] += u[i] * signs[j] * v[j]
+            return res
     return multiply
 
 
-def make_col_multiplier(col_keys: np.ndarray):
+def make_col_multiplier(col_keys: np.ndarray, deg_mask: int = 0):
     """Return a jitted geometric-product function, column-keyed.
 
     Iterates over components of the right operand v.  Preferred when v
@@ -172,24 +203,42 @@ def make_col_multiplier(col_keys: np.ndarray):
     Parameters
     ----------
     col_keys : numpy.ndarray
-        From euclidean_col_keys(dim).
+        From euclidean_col_keys(dim), possibly corrected for neg_mask.
+    deg_mask : int, optional
+        Bitmask of degenerate (null) basis vectors.
 
     Returns
     -------
     callable  (u: float64[::1], v: float64[::1]) -> float64[::1]
     """
-    @njit
-    def multiply_col(u: np.ndarray, v: np.ndarray) -> np.ndarray:
-        n = len(u)
-        res = np.zeros(n, dtype=np.float64)
-        signs = np.empty(n, dtype=np.int8)
-        for j in range(n):
-            if v[j] == 0.0:
-                continue
-            _row_from_key(col_keys[j], signs)
-            for i in range(n):
-                res[i ^ j] += signs[i] * u[i] * v[j]
-        return res
+    if deg_mask:
+        @njit
+        def multiply_col(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+            n = len(u)
+            res = np.zeros(n, dtype=np.float64)
+            signs = np.empty(n, dtype=np.int8)
+            for j in range(n):
+                if v[j] == 0.0:
+                    continue
+                _row_from_key(col_keys[j], signs)
+                for i in range(n):
+                    if i & j & deg_mask:
+                        continue
+                    res[i ^ j] += signs[i] * u[i] * v[j]
+            return res
+    else:
+        @njit
+        def multiply_col(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+            n = len(u)
+            res = np.zeros(n, dtype=np.float64)
+            signs = np.empty(n, dtype=np.int8)
+            for j in range(n):
+                if v[j] == 0.0:
+                    continue
+                _row_from_key(col_keys[j], signs)
+                for i in range(n):
+                    res[i ^ j] += signs[i] * u[i] * v[j]
+            return res
     return multiply_col
 
 
@@ -198,7 +247,7 @@ def make_col_multiplier(col_keys: np.ndarray):
 # ---------------------------------------------------------------------------
 
 class SignTable:
-    """Euclidean keyed virtual sign table for Cl(dim, 0).
+    """Keyed virtual sign table for Cl(dim, 0) or non-degenerate Cl(p, q).
 
     Instantiated by clifford.context.Initialize; user code does not
     normally construct this directly.
@@ -207,16 +256,28 @@ class SignTable:
     ----------
     dim : int
     size : int            2**dim
+    neg_mask : int        bitmask of basis vectors that square to -1
     row_keys : ndarray    shape (size,), dtype int32
     col_keys : ndarray    shape (size,), dtype int32
     fast_mul : callable   jitted row-keyed geometric product
     fast_mul_col : callable   jitted column-keyed geometric product
     """
 
-    def __init__(self, dim: int) -> None:
-        self.dim          = dim
-        self.size         = 1 << dim
-        self.row_keys     = euclidean_row_keys(dim)
-        self.col_keys     = euclidean_col_keys(dim)
-        self.fast_mul     = make_row_multiplier(self.row_keys)
-        self.fast_mul_col = make_col_multiplier(self.col_keys)
+    def __init__(self, dim: int, neg_mask: int = 0, deg_mask: int = 0) -> None:
+        self.dim      = dim
+        self.size     = 1 << dim
+        self.neg_mask = neg_mask
+        self.deg_mask = deg_mask
+
+        row_keys = euclidean_row_keys(dim)
+        col_keys = euclidean_col_keys(dim)
+
+        if neg_mask:
+            correction = np.arange(self.size, dtype=np.int32) & np.int32(neg_mask)
+            row_keys  ^= correction
+            col_keys  ^= correction
+
+        self.row_keys     = row_keys
+        self.col_keys     = col_keys
+        self.fast_mul     = make_row_multiplier(self.row_keys, deg_mask)
+        self.fast_mul_col = make_col_multiplier(self.col_keys, deg_mask)
