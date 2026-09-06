@@ -1,4 +1,4 @@
-# file: clifford/sign_table.py
+# file: clif/sign_table.py
 """
 Keyed virtual sign table for Cl(n, 0) and non-degenerate Cl(p, q).
 
@@ -50,10 +50,40 @@ because the full key arrays are built by XOR-ing basis keys.
 import numpy as np
 from numba import njit
 
-
 # ---------------------------------------------------------------------------
 # Key-array construction (runs once at context initialisation)
 # ---------------------------------------------------------------------------
+
+def key_base(t: int, k: int, n: int, kind: str, order: str = "high") -> int:
+    """
+    Row or column key basis for generator e_{t+1}, in an n-D algebra
+    with k negative-signature generators.
+
+    t     : generator index, 0-based (0 .. n-1)
+    k     : number of negative generators (0 .. n)
+    n     : dimension
+    kind  : "row" or "col"
+    order : "high" (negatives = top k generators, default)
+          | "low"  (negatives = bottom k generators)
+    """
+    if order == "low":
+        if kind == "row":
+            length = t if t >= k else t + 1
+            return (1 << length) - 1
+        else:  # col
+            length = (n - t) if t < k else (n - t - 1)
+            length = max(0, length)
+            return ((1 << length) - 1) << (n - length)
+    else:  # high
+        j = n - k
+        if kind == "row":
+            length = t if t < j else t + 1
+            return (1 << length) - 1
+        else:  # col
+            length = (n - t - 1) if t < j else (n - t)
+            length = max(0, length)
+            return ((1 << length) - 1) << (n - length)
+
 
 def euclidean_row_keys(dim: int) -> np.ndarray:
     """Row keys for the Euclidean Cl(dim) sign table.
@@ -249,7 +279,7 @@ def make_col_multiplier(col_keys: np.ndarray, deg_mask: int = 0):
 class SignTable:
     """Keyed virtual sign table for Cl(dim, 0) or non-degenerate Cl(p, q).
 
-    Instantiated by clifford.context.Initialize; user code does not
+    Instantiated by clif.context.Initialize; user code does not
     normally construct this directly.
 
     Attributes

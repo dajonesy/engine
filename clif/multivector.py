@@ -1,11 +1,11 @@
-# file: clifford/multivector.py
+# file: clif/multivector.py
 """
 The :class:`Accum` multivector class.
 
 A multivector in Cl(p, q, r) is a linear combination of all ``2^d`` basis
 blades, where ``d = p + q + r``.  :class:`Accum` stores the ``2^d``
 real coefficients in a NumPy array :attr:`Accum.Reg` indexed by ordinal
-(bitmask) order — see :mod:`clifford.__init__` for the indexing convention.
+(bitmask) order — see :mod:`clif.__init__` for the indexing convention.
 
 The name *Accum* (accumulator) reflects the design intent: the object holds
 the running sum of blade contributions during a computation, much as a hardware
@@ -37,17 +37,16 @@ Lounesto, P. (2001). *Clifford Algebras and Spinors* (2nd ed.). Cambridge.
 
 import math
 import numpy as np
-import clifford.context as Clif
-
+import clif.context as Clif
 
 class Accum:
     """A real multivector in the current Clifford algebra.
 
     Parameters
     ----------
-    None
-        The constructor takes no arguments.  The algebra context is read from
-        :mod:`clifford.context` at the time of construction.
+        Without an argument the constructor initializes all registers zeroed
+        An nparray of the right size for initialization can be passed in at creation
+        The algebra context is read from :mod:`clif.context` at the time of construction.
 
     Attributes
     ----------
@@ -68,15 +67,18 @@ class Accum:
     --------
     ::
 
-        import clifford.context as Clif
-        from clifford.multivector import Accum
+        import clif.context as Clif
+        from clif.multivector import Accum
 
         Clif.Cl(3)
         A = Accum()
-        A.Reg[1] = 1.0   # set the e1 component
-        A.Reg[2] = 2.0   # set the e2 component
-        print(A)         # 001  1.00000000
-                         # 010  2.00000000
+        A.Reg[0b001] =  1.0   # set the e1 component
+        A.Reg[0b011] =  2.0   # set the e12 component
+        A.Reg[0b100] = -1.0   # set the e3 component
+        # /OR/ A = Accum([0.0, 1.0, 0.0, 2.0, -1.0, 0.0, 0.0, 0.0])
+        print(A)         # 001   1.00000000
+                         # 011   2.00000000
+                         # 100  -1.00000000
     """
 
     #: Threshold below which a coefficient is treated as zero for display.
@@ -85,13 +87,33 @@ class Accum:
     #: Format string for a single non-zero coefficient line.
     FORMAT: str = '{0:08b} {1:16.8f}\n'
 
-    def __init__(self) -> None:
-        self.Reg        = np.zeros(Clif.bases(), dtype=np.float64)
+    def __init__(self, reg=None) -> None:
+        """Create a multivector in the current algebra context.
+
+        Parameters
+        ----------
+        reg : array_like, optional
+            Coefficients in ordinal order, length ``2 ** dimensions``.
+            The values are copied.  Omit for an all-zero multivector.
+
+        Raises
+        ------
+        ValueError
+            If *reg* does not have shape ``(2 ** dimensions,)``.
+        """
         self.dimensions = Clif.dimensions
         self.bases      = Clif.bases()
         self.signature  = Clif.signature
         self.degenerate = Clif.degenerate
-
+        if reg is None:
+            self.Reg = np.zeros(self.bases, dtype=np.float64)
+        else:
+            self.Reg = np.array(reg, dtype=np.float64)
+            if self.Reg.shape != (self.bases,):
+                raise ValueError(
+                    f"expected shape ({self.bases},), got {self.Reg.shape}"
+                )
+                
     # ------------------------------------------------------------------
     # Display
     # ------------------------------------------------------------------
@@ -173,10 +195,6 @@ class Accum:
             for i in range(self.bases):
                 A.Reg[i] = -A.Reg[i]
             A.Reg[0] += other
-        elif isinstance(other, int[:], float[:]):
-            A = Accum()
-            for i in range(self.bases):
-                A.Reg[i] = other[i] - self.Reg[i]
         else:
             return NotImplemented
         return A
@@ -227,38 +245,58 @@ class Accum:
         Raises
         ------
         NotImplementedError
-            If the current algebra has dimension ≥ 8 (fast multiplier not yet
-            available for those dimensions).
+            Only multivector multiplication handled here.
+
+        RunTimeError
+            Forgetting to setup context first may land a user here.
+            Help him discover his error, or prompt a new user how to initialize.
         """
         if not isinstance(other, Accum):
             return NotImplemented
         A = Accum()
-        if Clif._ActiveTable and Clif._ActiveTable.fast_mul:
-            A.Reg = Clif._ActiveTable.fast_mul(self.Reg, other.Reg)
-        else:
-            raise NotImplementedError(
-                "Dimensions > 8 do not yet have an optimised multiplier. "
-                "Contribute one via clifford/sign_table.py."
+        if Clif._ActiveTable is None:
+            raise RuntimeError(
+                "No algebra context. Call clif.context.Cl(p, q, r), "
+                "Layout([...]), or Initialize(d, s, x) before doing arithmetic."
             )
+        A.Reg = Clif._ActiveTable.fast_mul(self.Reg, other.Reg)
         return A
-
-    def inverse(self):
-        """Returns the multiplicative inverse of the multivector."""
-        # Your inversion logic here (e.g., using shirokov's method or reversion)
-        pass
-        return None
-
-    def __truediv__(self, other):
-        # A / B is mathematically A * B.inverse()
-        if isinstance(other, Multivector):
-            return self * other.inverse()
-        # Handle scalar division
-        return self * (1 / other)
-
-    def __rtruediv__(self, other):
-        # Handle cases like 1 / A
-        return other * self.inverse()
     
+    def inverse(self):
+        from clif.inverse import low_dim_inverse, model_inverse
+        if self.dimensions < 4:
+            return Accum( low_dim_inverse.inverse( self.Reg ))
+        elif 11 < self.dimensions:
+            raise NotImplementedError(
+                f"No supported inverse for this algebra "
+                f"signature = {Clif.get_signature()}; 11D limit."
+            )
+        # at this point we have 3 < A.dimensions < 12
+        # the normal expected route is through optimized tau-fls
+        # but if the kernel is not made, we punt to the model
+        elif Clif._ActiveInverse is None:
+            return model_inverse.inverse( self )
+        else: # use the optimized kernel
+            return Accum( Clif._ActiveInverse( self.Reg ))
+
+    def __truediv__(self, other):          # self/other
+        if isinstance(other, (int, float)):
+            return self.scale(1.0/other)        
+        elif isinstance(other, Accum):
+            Clif.Check(self,other) # assert these are the same algbra
+            return self * other.inverse()          # right division: A B^-1
+        else:
+            return NotImplemented
+
+    def __rtruediv__(self, other):         # other/self
+        if isinstance(other, (int, float)):
+            return self.inverse().scale(other)
+        elif isinstance(other, Accum):
+            Clif.Check(self,other) # assert these are the same algbra
+            return other * self.inverse() 
+        else:
+            return NotImplemented
+
     # ------------------------------------------------------------------
     # Equality
     # ------------------------------------------------------------------
@@ -422,8 +460,9 @@ class Accum:
                 return False
         return True
 
-    def random(self):
-        """Return random values
+    @staticmethod
+    def random() -> 'Accum':
+        """Return a new multivector with standard normal coefficients.
 
         Returns
         -------
@@ -437,5 +476,4 @@ class Accum:
         Principly used for testing.
         
         """
-        self.Reg = np.random.normal(0.0, 1.0, self.bases)
-        return
+        return Accum(np.random.normal(0.0, 1.0, Clif.bases()))

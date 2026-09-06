@@ -1,4 +1,4 @@
-# file: model_inverse.py
+# file: clif/inverse/model_inverse.py
 """
 High level multivector inverse model.
 
@@ -13,10 +13,9 @@ On import, two tables are created to serve dimensions 4-11:
   involution tau: reversion composed with a Thue-Morse sign layer on the
   top ceil((d-6)/2) basis vectors.
 
-* :func:`mv_inv(A)` -- returns the inverse of multivector A.
+* :func:`inverse(A)` -- returns the inverse of multivector A.
 """
-import clifford.context as Clif
-from clifford.multivector import Accum
+import clif.context as Clif
 
 invo_4   = [ 1]*16
 invo_5   = [ 1]*32
@@ -32,7 +31,7 @@ involution_fix = (invo_4, invo_5, invo_6, invo_7, invo_8, invo_9, invo_10, invo_
 Involution = []
 for invo in involution_fix:
     Involution.append(
-        [(1, 1, -1, -1)[3 & Clif.Grade[n]] * invo[n] for n in range(len(invo))]
+        [(1, 1, -1, -1)[3 & bin(n).count('1')] * invo[n] for n in range(len(invo))]
     )
 
 tweak_4_5   = [1]
@@ -43,17 +42,16 @@ Tweak = (tweak_4_5, tweak_4_5, tweak_6_7, tweak_6_7, tweak_8_9, tweak_8_9, tweak
 
 
 # T = tweaks, I = involution template, A = multivector
-def mv_inv(A: Accum) -> Accum:
+def inverse( A ):
     """
     Returns the inverse of the multivector A (when it exists).
 
     Example
     -------
-    import clifford.context as Clif
+    import clif.context as Clif
     Clif.Cl(6)            # register a context
-    A = Accum()           # create a multivector with the registered context
-    A.random()            # fill the multivector with random values
-    rA = mv_inv(A)        # calculate the inverse
+    A = Accum.random()    # create a multivector with the registered context
+    rA = inverse(A)       # calculate the inverse
     print(A * rA)         # show that rA is the inverse of A (the product is 1.0)
 
     """

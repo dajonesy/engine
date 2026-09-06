@@ -1,6 +1,6 @@
 # file: tests/test_model.py
 """
-Certification of the reference model (clifford.inverse.model_inverse).
+Certification of the reference model (clif.inverse.model_inverse).
 
 Run from the engine root:  pytest tests/test_model.py -v
 
@@ -16,11 +16,11 @@ Checks, per dimension 4-11:
 import numpy as np
 import pytest
 
-import clifford.context as Clif
-from clifford.multivector import Accum
-from clifford.util import inverse_involution
-from clifford.inverse.fls import _make_tweak
-from clifford.inverse import model_inverse as MI
+import clif.context as Clif
+from clif.multivector import Accum
+from clif.util import inverse_involution
+from clif.inverse.fls import _make_tweak
+from clif.inverse import model_inverse as MI
 
 DIMS = list(range(4, 12))
 
@@ -57,8 +57,8 @@ def test_closure(d):
     _register(d)
     rng = np.random.default_rng(100 + d)
     tau = inverse_involution(d)
-    A = Accum(); A.Reg = rng.standard_normal(1 << d)
-    C = (A * (tau * A)).Reg
+    A = Accum(rng.standard_normal(1 << d))
+    C = (A * Accum(tau * A.Reg)).Reg
     leak = np.max(np.abs(C[tau < 0])) / np.max(np.abs(C))
     assert leak < 1e-13
 
@@ -69,10 +69,10 @@ def test_central_collapse(d):
     _register(d)
     rng = np.random.default_rng(200 + d)
     size = 1 << d
-    A = Accum(); A.Reg = rng.standard_normal(size)
+    A = Accum(rng.standard_normal(size))
 
     I = np.array(MI.Involution[d - 4], dtype=np.float64)
-    B = I * A
+    B = Accum(I * A.Reg)
     C = A * B
     T = MI.Tweak[d - 4]
     D = C.copy(); D.Reg[0] *= -T[0]
@@ -97,9 +97,8 @@ def test_central_collapse(d):
 def test_inverse_residual(d):
     _register(d)
     rng = np.random.default_rng(300 + d)
-    A = Accum(); A.Reg = rng.standard_normal(1 << d)
-    rA = MI.mv_inv(A)
+    A = Accum(rng.standard_normal(1 << d))
+    rA = MI.inverse(A)
     P = (A * rA).Reg
     res = max(abs(P[0] - 1.0), float(np.max(np.abs(P[1:]))))
     assert res < TOL[d]
-

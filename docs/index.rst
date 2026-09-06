@@ -1,7 +1,8 @@
-Clifford: A Geometric Algebra Toolkit
-=====================================
+clif: A Geometric Algebra Toolkit
+==================================
 
 A Python package for computations in Clifford / geometric algebras.
+
 
 The fastest way to learn the package is by working an example, so the
 documentation leads with one.  The API reference and module index sit
@@ -23,7 +24,7 @@ behind it for when you need details.
    :maxdepth: 2
    :caption: API reference
 
-   clifford
+   clif
 
 .. toctree::
    :maxdepth: 2

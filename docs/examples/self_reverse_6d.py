@@ -89,7 +89,7 @@ import numpy as np
 from numba import njit
 
 #import clifford.context as Clif
-from clifford.multivector import Accum
+from clif.multivector import Accum
 
 # ===============================================================
 # Index and sign tables for the 6D self-reverse subspace

@@ -1,4 +1,4 @@
-# file: clifford/util.py
+# file: clif/util.py
 """
 Convenience functions for constructing and operating on multivectors.
 
@@ -17,7 +17,7 @@ This module provides:
   :func:`I4`, :func:`I5`, :func:`I6`
 
 All functions operate on the algebra currently configured in
-:mod:`clifford.context`.
+:mod:`clif.context`.
 
 Notes
 -----
@@ -30,8 +30,8 @@ will be migrated once the corresponding supporting modules are in place.
 from math import sqrt
 import numpy as np
 
-import clifford.context as Clif
-from clifford.multivector import Accum
+import clif.context as Clif
+from clif.multivector import Accum
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +124,7 @@ def print2_sparse(A: Accum, B: Accum) -> None:
 def random(layout) -> Accum:
     """Construct a random multivector for the given signature layout.
 
-    Calls :func:`clifford.context.Layout` to configure the algebra, then
+    Calls :func:`clif.context.Layout` to configure the algebra, then
     fills all ``2^d`` coefficients with independent standard-normal samples.
 
     Parameters
@@ -276,8 +276,10 @@ def _involution_fix(dim: int) -> np.ndarray:
     Parameters
     ----------
     dim : int
-        Algebra dimension, 6 <= dim <= 13.
+        Algebra dimension, 4 <= dim <= 13.
     """
+    if dim < 6:
+        return np.ones(1 << dim, dtype=np.float64)
     size       = 1 << dim
     num_blocks = 1 << ((dim - 5) // 2)
     block_size = size // num_blocks
@@ -520,7 +522,7 @@ def print_all_tests(SS: list) -> None:
 
 # ---------------------------------------------------------------------------
 # Dimension-specific closed-form inverses
-# (general inverses live in clifford/inverse/)
+# (general inverses live in clif/inverse/)
 # ---------------------------------------------------------------------------
 
 def I4(A: Accum) -> Accum:
@@ -602,7 +604,7 @@ def I6(A: Accum) -> Accum:
     ``B = A * ~A`` is self-reverse and has grades {0, 1, 4, 5}.  Three
     further multiplications and scalar adjustments reduce *B* to a scalar
     denominator.  This is the Jones inverse for 6D — see
-    :mod:`clifford.inverse.jones` for the general-dimension version.
+    :mod:`clif.inverse.jones` for the general-dimension version.
 
     The number of multivector multiplications is 5 (including ``A * ~A``).
     """

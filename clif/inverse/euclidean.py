@@ -1,11 +1,12 @@
-# file: clifford/inverse/euclidean.py
+# file: clif/inverse/euclidean.py
 """
-Top-level Euclidean multivector inverse for Cl(d, 0), d in 6-13.
+Top-level multivector inverse via the tau-domain kernel, d in 4-11.
 """
 
-from clifford.multivector import Accum
-from clifford.inverse.sparse_fls import sparse_fls_inverse
-from clifford.inverse.newton    import newton_schulz
+import clif.context as Clif
+from clif.multivector import Accum
+from clif.inverse.tau_api import get_inverter
+from clif.inverse.newton  import newton_schulz
 
 
 def euclidean_inverse(A: Accum, refine: bool = True) -> Accum:
@@ -52,7 +53,8 @@ def euclidean_inverse(A: Accum, refine: bool = True) -> Accum:
     13      4.2 × 10⁻³   1.8 × 10⁻¹⁵
     ======  ============  ===============
     """
-    X = sparse_fls_inverse(A)
+    X = Accum()
+    X.Reg = get_inverter(Clif.get_signature()).inverse(A.Reg)
     if refine and A.dimensions >= 12:
         X = newton_schulz(A, X)
     return X

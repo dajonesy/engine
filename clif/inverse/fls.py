@@ -1,4 +1,4 @@
-# file: clifford/inverse/fls.py
+# file: clif/inverse/fls.py
 """
 Faddeev-LeVerrier-Souriau (FLS) multivector inverse for Euclidean Cl(n,0).
 
@@ -36,7 +36,7 @@ Numerical precision
 -------------------
 At dimensions 12-13 the 31-step polynomial accumulates enough floating-
 point error to leave residuals of O(1e-3) to O(1e-2).  Follow with
-Newton-Schulz refinement (clifford.inverse.newton) to recover full
+Newton-Schulz refinement (clif.inverse.newton) to recover full
 double precision.
 
 References
@@ -45,9 +45,9 @@ Jones, D. A. — notebooks/Model Inverses.ipynb, 2026.
 """
 
 import numpy as np
-import clifford.context as Clif
-from clifford.multivector import Accum
-from clifford.util import inverse_involution  # noqa: F401 — re-exported from here
+import clif.context as Clif
+from clif.multivector import Accum
+from clif.util import inverse_involution  # noqa: F401 — re-exported from here
 
 
 def _make_tweak(dim: int) -> list:
@@ -147,7 +147,7 @@ def fls_inverse(A: Accum) -> Accum:
     """FLS inverse for Euclidean Cl(dim, 0), dim in 6-13.
 
     Dispatches to even_inverse or odd_inverse based on dimension.
-    For dims 12-13, compose with newton_schulz() from clifford.inverse.newton
+    For dims 12-13, compose with newton_schulz() from clif.inverse.newton
     to recover full double precision.
 
     Parameters

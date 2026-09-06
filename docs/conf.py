@@ -1,4 +1,4 @@
-"""Sphinx configuration for the clifford documentation.
+"""Sphinx configuration for the clif documentation.
 
 This file lives in ``<project_root>/docs/conf.py``.  Sphinx reads it
 when you run ``make html``.
@@ -10,12 +10,12 @@ from datetime import datetime
 
 # -- Path setup --------------------------------------------------------------
 # Add the project root (one level above this docs/ folder) to sys.path so
-# that ``import clifford`` works during the documentation build.
+# that ``import clif`` works during the documentation build.
 sys.path.insert(0, os.path.abspath('..'))
 
 
 # -- Project information -----------------------------------------------------
-project   = 'Clifford'
+project   = 'clif'
 author    = 'D. A. Jones'
 copyright = f'{datetime.now().year}, {author}'
 release   = '0.1'

@@ -1,4 +1,4 @@
-Building the clifford documentation
+Building the clif documentation
 ====================================
 
 One-time setup
@@ -72,5 +72,5 @@ Layout
     ├── examples/                  hand-written example pages
     │   └── inverting_7d.rst
     └── api/                       auto-generated API reference
-        ├── clifford.rst           top-level API toc
+        ├── clif.rst           top-level API toc
         └── generated/             autosummary stubs (don't hand-edit)

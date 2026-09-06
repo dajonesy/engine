@@ -1,6 +1,6 @@
-# file: clifford/__init__.py
+# file: clif/__init__.py
 """
-clifford — a Python package for Clifford algebra.
+clif — a Python package for Clifford algebra.
 
 This package implements Clifford algebra (geometric algebra) with a focus on
 explicit ordinal indexing of multivector components, efficient sign-table-based
@@ -25,10 +25,11 @@ The package is organized as four cooperating layers:
    multivectors (grade projection, involutions, random multivectors, inverses
    for specific dimensions).
 
-Inverse algorithms live in the :mod:`clifford.inverse` sub-package: :func:`clifford.inverse.fls_inverse`
-(Faddeev–LeVerrier–Souriau based, with :func:`even_inverse`/:func:`odd_inverse` variants and
-sparse counterparts), :func:`clifford.inverse.euclidean_inverse`, and
-:func:`clifford.inverse.newton_schulz` (iterative refinement).
+Inverse algorithms live in the :mod:`clif.inverse` sub-package:
+:func:`clif.inverse.fls_inverse` (Faddeev–LeVerrier–Souriau based, with
+:func:`even_inverse`/:func:`odd_inverse` variants and sparse counterparts),
+:func:`clif.inverse.euclidean_inverse`, and
+:func:`clif.inverse.newton_schulz` (iterative refinement).
 
 Ordinal indexing convention
 ---------------------------
@@ -45,18 +46,17 @@ representation names the basis vectors it contains.  In a 3-dimensional algebra:
     7  = 0b111  e1^e2^e3  = I   (grade 3, pseudoscalar)
 
 This ordering differs from the graded lexicographic ordering used in the public
-``clifford`` package and is a deliberate design choice of this implementation.
+``clifford`` package (pygae) and is a deliberate design choice of this implementation.
 
 Quick start
 -----------
 ::
 
-    from clifford.context import Cl, Layout
-    from clifford.multivector import Accum
+    from clif.context import Cl, Layout
+    from clif.multivector import Accum
 
     Cl(1, 1, 1)        # algebra with 1 positive, 1 negative, 1 null basis vector
-    A = Accum()
-    A.random()
+    A = Accum.random()
     print(A)
 
     Cl(1, 3)                  # spacetime algebra  Cl(1,3)
@@ -68,14 +68,14 @@ D. A. Jones  (original implementation)
 """
 
 # ---- nice for the developer ---- (maybe)
-from clifford import context
-from clifford import sign_table
-from clifford import multivector
-from clifford import util
+from clif import context
+from clif import sign_table
+from clif import multivector
+from clif import util
 
 # ---- all a user should need ----
-from clifford.context import Cl,Grade
-from clifford.multivector import Accum
+from clif.context import Cl, Grade
+from clif.multivector import Accum
 
 __all__ = [
     "context",

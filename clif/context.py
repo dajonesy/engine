@@ -1,11 +1,11 @@
-# file: clifford/context.py
+# file: clif/context.py
 """
 Algebra context — global state for the current Clifford algebra.
 
 This module holds the parameters that define the algebra in use: the number of
 dimensions, the metric signature (which basis vectors square to −1), and the
 degeneracy mask (which basis vectors square to 0).  It also maintains the
-pre-computed :data:`Grade` table and the active :class:`~clifford.sign_table.SignTable`.
+pre-computed :data:`Grade` table and the active :class:`~clif.sign_table.SignTable`.
 
 All multivectors created after a call to :func:`Initialize` (or the convenience
 wrappers :func:`Layout` and :func:`Cl`) share the same algebra context.
@@ -14,7 +14,7 @@ wrappers :func:`Layout` and :func:`Cl`) share the same algebra context.
 
     The context is **module-level mutable state**.  Two multivectors created
     under different :func:`Initialize` calls are mathematically incompatible.
-    Each :class:`~clifford.multivector.Accum` instance records the context at
+    Each :class:`~clif.multivector.Accum` instance records the context at
     the time of its creation; use :func:`Check` to verify compatibility before
     operating on a pair.
 
@@ -33,7 +33,7 @@ Examples
 --------
 Euclidean 3-space::
 
-    import clifford.context as Clif
+    import clif.context as Clif
     Clif.Cl(3)           # Cl(3, 0, 0)
 
 Minkowski spacetime (one time-like dimension)::
@@ -50,8 +50,9 @@ Explicit per-axis metric::
 """
 
 import numpy as np
-import clifford.sign_table as ST
-
+import clif.sign_table as ST
+# NOTE: clif.inverse is imported lazily inside Initialize().  A top-level
+# import here would be circular: context -> inverse/__init__ -> fls -> context.
 
 # ---------------------------------------------------------------------------
 # Module-level state
@@ -73,10 +74,11 @@ degenerate: int = 0
 #: Recomputed by :func:`Initialize`.
 Grade: np.ndarray = []
 
-#: The active :class:`~clifford.sign_table.SignTable` for the current algebra.
+#: The active :class:`~clif.sign_table.SignTable` for the current algebra.
 #: Set by :func:`Initialize`; ``None`` until the first call.
 _ActiveTable = None
 
+_ActiveInverse = None
 
 # ---------------------------------------------------------------------------
 # Derived quantities
@@ -161,7 +163,7 @@ def Initialize(d: int, s: int = 0, x: int = 0) -> None:
     Notes
     -----
     Calling this function rebuilds the grade table and instantiates a new
-    :class:`~clifford.sign_table.SignTable`.  For dimensions ≥ 8 the sign
+    :class:`~clif.sign_table.SignTable`.  For dimensions ≥ 8 the sign
     table is not pre-built (the Numba multiplier is not generated); a
     different multiplication strategy is required for those cases.
 
@@ -179,14 +181,21 @@ def Initialize(d: int, s: int = 0, x: int = 0) -> None:
 
         Initialize(4, x=0b1000)
     """
-    global dimensions, signature, degenerate, Grade, _ActiveTable
+    global dimensions, signature, degenerate, Grade, _ActiveTable, _ActiveInverse
     dimensions = d
     signature  = s
     degenerate = x
     Grade = _build_grade_table( d )
     _ActiveTable = ST.SignTable(d, s, x)
+    
+    from clif.inverse import tau_api          # local: breaks the cycle
+    try:
+        _ActiveInverse = tau_api.get_inverter(get_signature()).inverse
+    except AssertionError:
+        # sparse_fls is the single source of truth on what it supports
+        # (currently d = 4..11, non-degenerate). Anything else: no inverse.
+        _ActiveInverse = None
     return
-
 
 def Layout(Signature: list) -> None:
     """Configure the algebra from a per-axis metric list.
@@ -282,7 +291,7 @@ def Check(A, B) -> None:
 
     Parameters
     ----------
-    A, B : :class:`~clifford.multivector.Accum`
+    A, B : :class:`~clif.multivector.Accum`
         The two multivectors to compare.
 
     Raises

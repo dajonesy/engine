@@ -49,8 +49,8 @@ Benchmark
 ---------
 
 Random full multivectors, Euclidean ``Cl(d, 0)``, timed after JIT warm-up.
-*Dense* is :func:`~clifford.inverse.fls.fls_inverse`;
-*Sparse* is :func:`~clifford.inverse.sparse_fls.sparse_fls_inverse`.
+*Dense* is :func:`~clif.inverse.fls.fls_inverse`;
+*Sparse* is :func:`~clif.inverse.sparse_fls.sparse_fls_inverse`.
 Error is ``max |A · A⁻¹ − e₀|`` over all blades.
 
 .. list-table::
@@ -123,7 +123,7 @@ Error is ``max |A · A⁻¹ − e₀|`` over all blades.
 
 At dimensions 12–13 the polynomial accumulates enough floating-point
 error to leave residuals of ``O(10⁻⁶)`` to ``O(10⁻³)``.  A two-pass
-strategy using :func:`~clifford.inverse.newton.newton_schulz` recovers
+strategy using :func:`~clif.inverse.newton.newton_schulz` recovers
 full double precision:
 
 .. list-table::
@@ -149,10 +149,10 @@ Usage example
 
 ::
 
-   import clifford.context as Clif
-   from clifford.multivector import Accum
-   from clifford.inverse.sparse_fls import sparse_fls_inverse
-   from clifford.inverse.newton import newton_schulz
+   import clif.context as Clif
+   from clif.multivector import Accum
+   from clif.inverse.sparse_fls import sparse_fls_inverse
+   from clif.inverse.newton import newton_schulz
    import numpy as np
 
    Clif.Cl(13)                             # Euclidean Cl(13, 0)

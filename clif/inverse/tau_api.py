@@ -1,4 +1,6 @@
-"""tau_api — the whole public surface of sparse_fls.
+#file: clif/inverse/tau_api.py
+"""
+The whole public surface of sparse_fls.
 
 You never need to read sparse_fls.py to use it. It exposes one object,
 TauInverse(sig), with one useful method:

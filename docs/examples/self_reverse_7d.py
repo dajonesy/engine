@@ -1,8 +1,8 @@
 """
 file: self_reverse_7D.py
-2026.05.10  DAJones — initial construction, extending self_reverse_6D.py
-            to the 7D Abdulkhaev–Shirokov pipeline with the K-tweak
-            reaching both scalar and pseudoscalar.
+2026.05.10  DAJones — initial construction, 
+extending self_reverse_6D.py to the 7D Abdulkhaev–Shirokov pipeline 
+with the K-tweak reaching both scalar and pseudoscalar.
 
 Optimized 7D inverse for the Abdulkhaev–Shirokov working subspace
 ==================================================================

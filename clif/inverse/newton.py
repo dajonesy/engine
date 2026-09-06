@@ -1,4 +1,4 @@
-# file: clifford/inverse/newton.py
+# file: clif/inverse/newton.py
 """
 Newton-Schulz iterative inverse refinement for Clifford multivectors.
 
@@ -14,8 +14,8 @@ at high dimensions.
 """
 
 import numpy as np
-import clifford.context as Clif
-from clifford.multivector import Accum
+import clif.context as Clif
+from clif.multivector import Accum
 
 
 def newton_schulz(A: Accum, X0: Accum, tol: float = 1e-13, max_iter: int = 20) -> Accum:
