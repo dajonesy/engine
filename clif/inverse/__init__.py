@@ -8,16 +8,19 @@ clif.inverse
 Fast, JIT-compiled multivector inverse routines for arbitrary signature.
 """
 
-from .fls        import fls_inverse, even_inverse, odd_inverse, inverse_involution
-from .newton     import newton_schulz
-from .euclidean  import euclidean_inverse
+from .fls import fls_inverse
+from .newton import newton_schulz
+from .euclidean import euclidean_inverse
 from .sparse_fls import TauInverse
-from .tau_api    import get_inverter, inverse, warm
+from .sparse_fls_dd import DDTauInverse
+from .tau_api import get_inverter, inverse, warm
+from .low_dim_inverse import inverse
 
 __all__ = [
     "euclidean_inverse",
-    "fls_inverse", "even_inverse", "odd_inverse", "inverse_involution",
+    "fls_inverse",
     "newton_schulz",
     "TauInverse",
     "get_inverter", "inverse", "warm"
+    "inverse"
 ]

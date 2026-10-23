@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "clif"
+name = "clif-ga"
 version = "0.1.0"
 description = "Clifford-algebra engine: multivector inverse algorithms"
 requires-python = ">=3.10"
@@ -15,8 +15,12 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["jupyter", "ipykernel", "ruff", "myst-nb", "jupyter-cache", "matplotlib", "pytest"]
 
-[tool.setuptools]
-packages = ["clif", "clif.inverse"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["clif", "clif.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100

@@ -5,5 +5,8 @@
    :toctree: generated
    :recursive:
 
-   clif.util
+   clif.context
+   clif.sign_table
    clif.multivector
+   clif.util
+   clif.tools

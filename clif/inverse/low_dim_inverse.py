@@ -1,10 +1,15 @@
 # file: clif/inverse/low_dim_inverse.py
 """
-Closed-form inverses for d <= 3 (Hitzer & Sangwine).
+Closed-form inverses for dimensions <= 3 (Hitzer & Sangwine).
+
+3 < dimensions < 12 are handled by tau_api.py
+so these processes are here to complete support for low dimensions 
+
 
 Operates on ordinal coefficient arrays, matching the calling convention
 of the tau path so dispatch can bind either one interchangeably.
 """
+
 import numpy as np
 import clif.context as Clif
 

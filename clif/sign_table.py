@@ -7,11 +7,11 @@ structure of a Walsh-Hadamard matrix: every row and every column is a
 Hadamard row identified by a single integer key.  This module computes
 those key arrays at setup time — one key per basis blade for rows and
 columns separately — and provides Numba-jitted multipliers that
-reconstruct sign rows on the fly rather than storing the full table.
+reconstruct sign rows on the fly rather than storing the full table.::
 
-Memory cost  2 * 2^n integers  (vs 4^n bytes for a full int8 table)
-Setup cost   O(n * 2^n)
-Per-product  O(2^n) per sign-row reconstruction inside the inner loop
+    Memory cost  2 * 2^n integers  (vs 4^n bytes for a full int8 table)
+    Setup cost   O(n * 2^n)
+    Per-product  O(2^n) per sign-row reconstruction inside the inner loop
 
 Key arrays
 ----------
@@ -24,6 +24,7 @@ where Hadamard is the Sylvester Walsh-Hadamard matrix of order 2^n.
 
 Row key basis  (for each basis vector e_p, p = 0 .. n-1):
     v_key[p] = pseudo XOR ((1 << (p+1)) - 1)
+
 where pseudo = (1 << n) - 1.
 
 Column key basis:
@@ -63,8 +64,7 @@ def key_base(t: int, k: int, n: int, kind: str, order: str = "high") -> int:
     k     : number of negative generators (0 .. n)
     n     : dimension
     kind  : "row" or "col"
-    order : "high" (negatives = top k generators, default)
-          | "low"  (negatives = bottom k generators)
+    order : "high" (negatives = top k generators, default) or "low" (negatives = bottom k generators)    order : "high" (negatives = top k generators, default)
     """
     if order == "low":
         if kind == "row":

@@ -61,7 +61,8 @@ intersphinx_mapping = {
 }
 
 templates_path   = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '**.ipynb_checkpoints']
+exclude_patterns = ['_build', '**.ipynb_checkpoints', 'README.rst',
+    'Thumbs.db', '.DS_Store']
 
 
 # -- HTML output -------------------------------------------------------------

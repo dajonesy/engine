@@ -37,9 +37,13 @@ def newton_schulz(A: Accum, X0: Accum, tol: float = 1e-13, max_iter: int = 20) -
     Accum
         Refined inverse, satisfying A * result ≈ e0 within tol.
     """
+    
+    VERBOSE = True
+    
     mul = Clif._ActiveTable.fast_mul
     a = A.Reg
     x = X0.Reg.copy()
+    err_was = 10.0 # big error
 
     two = np.zeros_like(a)
     two[0] = 2.0
@@ -51,6 +55,16 @@ def newton_schulz(A: Accum, X0: Accum, tol: float = 1e-13, max_iter: int = 20) -
             err = max(err, float(np.max(np.abs(ax[1:]))))
         if err < tol:
             break
+
+        if VERBOSE:
+            print("err = ",err)
+        
+        if (err > err_was):
+            print("newton schulz diverges")
+            break
+        
+        err_was = err
+
         x  = mul(x, two - ax)
         ax = mul(a, x)
 

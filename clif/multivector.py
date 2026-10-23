@@ -5,7 +5,7 @@ The :class:`Accum` multivector class.
 A multivector in Cl(p, q, r) is a linear combination of all ``2^d`` basis
 blades, where ``d = p + q + r``.  :class:`Accum` stores the ``2^d``
 real coefficients in a NumPy array :attr:`Accum.Reg` indexed by ordinal
-(bitmask) order — see :mod:`clif.__init__` for the indexing convention.
+(bitmask) order — see :mod:`clif` for the indexing convention.
 
 The name *Accum* (accumulator) reflects the design intent: the object holds
 the running sum of blade contributions during a computation, much as a hardware
@@ -17,7 +17,7 @@ The standard Python arithmetic operators are overloaded:
 
 * ``A + B``, ``A + scalar`` — addition
 * ``A - B``, ``A - scalar`` — subtraction
-* ``scalar * A`` — scalar left-multiplication  (via ``__rmul__``)
+* ``scalar * A`` — scalar left-multiplication (via ``__rmul__``)
 * ``A * B`` — geometric product               (via ``__mul__``)
 * ``~A``  — reversion                         (via ``__invert__``)
 
@@ -42,22 +42,25 @@ import clif.context as Clif
 class Accum:
     """A real multivector in the current Clifford algebra.
 
+    Without an argument the constructor initializes all registers zeroed.
+    An ndarray of the right size can be passed in at creation.
+    The algebra context is read from :mod:`clif.context` at construction time.
+
     Parameters
     ----------
-        Without an argument the constructor initializes all registers zeroed
-        An nparray of the right size for initialization can be passed in at creation
-        The algebra context is read from :mod:`clif.context` at the time of construction.
+    reg : numpy.ndarray, optional
+        Element weight array to initialize ``Reg`` (see below).  
+        ``None`` allocates a ``Reg`` of all zeros.
 
     Attributes
     ----------
     Reg : numpy.ndarray
         Coefficient array of shape ``(2**dimensions,)`` and dtype ``float64``.
-        ``Reg[i]`` is the coefficient of the basis blade with ordinal index
-        ``i``.  Initialised to all zeros.
+        ``Reg[i]`` is the coefficient of the element with ordinal index ``i``.
     dimensions : int
         Algebra dimension recorded at construction time.
     bases : int
-        Number of basis blades (``2 ** dimensions``) recorded at construction.
+        Number of elements (``2 ** dimensions``) recorded at construction.
     signature : int
         Signature bitmask recorded at construction time.
     degenerate : int
@@ -76,6 +79,7 @@ class Accum:
         A.Reg[0b011] =  2.0   # set the e12 component
         A.Reg[0b100] = -1.0   # set the e3 component
         # /OR/ A = Accum([0.0, 1.0, 0.0, 2.0, -1.0, 0.0, 0.0, 0.0])
+
         print(A)         # 001   1.00000000
                          # 011   2.00000000
                          # 100  -1.00000000
@@ -240,24 +244,25 @@ class Accum:
         Returns
         -------
         Accum
-            The geometric product; neither operand is modified.
+            The geometric product; neither operand is modified.  Returns
+            ``NotImplemented`` if *other* is not an :class:`Accum`, letting
+            Python try the reflected operation.
 
         Raises
         ------
-        NotImplementedError
-            Only multivector multiplication handled here.
-
-        RunTimeError
-            Forgetting to setup context first may land a user here.
-            Help him discover his error, or prompt a new user how to initialize.
+        RuntimeError
+            No algebra context has been established.  Call
+            :func:`clif.context.Cl` before doing arithmetic.
         """
+
         if not isinstance(other, Accum):
             return NotImplemented
         A = Accum()
         if Clif._ActiveTable is None:
             raise RuntimeError(
                 "No algebra context. Call clif.context.Cl(p, q, r), "
-                "Layout([...]), or Initialize(d, s, x) before doing arithmetic."
+                "Layout([...]), or Initialize(d, s, x) "
+                "before doing arithmetic."
             )
         A.Reg = Clif._ActiveTable.fast_mul(self.Reg, other.Reg)
         return A
@@ -266,10 +271,10 @@ class Accum:
         from clif.inverse import low_dim_inverse, model_inverse
         if self.dimensions < 4:
             return Accum( low_dim_inverse.inverse( self.Reg ))
-        elif 11 < self.dimensions:
+        elif 15 < self.dimensions:
             raise NotImplementedError(
                 f"No supported inverse for this algebra "
-                f"signature = {Clif.get_signature()}; 11D limit."
+                f"signature = {Clif.get_signature()}; 15D limit."
             )
         # at this point we have 3 < A.dimensions < 12
         # the normal expected route is through optimized tau-fls
@@ -392,10 +397,11 @@ class Accum:
     # ------------------------------------------------------------------
 
     def __invert__(self) -> 'Accum':
-        """Reversion ``~A``.
+        r"""Reversion ``~A``.
 
-        Reverses the order of basis vectors in each blade.  Negates
-        coefficients whose grade satisfies ``grade mod 4 ∈ {2, 3}``.
+        Reverses the order of basis vectors in each blade. Negates 
+        coefficients whose grade satisfies :math:`g \bmod 4 \in \{2, 3\}`.        
+        This is an anti-automorphism: ``~~A == A`` and ``~(A*B) == (~B)*(~A)``.
 
         Returns
         -------
@@ -404,7 +410,7 @@ class Accum:
 
         Notes
         -----
-        Equivalent to Lounesto's ``Ã`` notation.
+        Equivalent to Lounesto's :math:`\tilde{A}` (over tilde) notation.
         """
         other = self.copy()
         for i in range(self.bases):
@@ -423,9 +429,12 @@ class Accum:
         return ~self
 
     def conjugate(self) -> 'Accum':
-        """Clifford conjugation.
+        r"""Clifford conjugation.
 
-        Negates coefficients whose grade satisfies ``grade mod 4 ∈ {1, 2}``.
+        Negates coefficients whose grade satisfies 
+        :math:`g \bmod 4 \in \{1, 2\}`.
+        This is an anti-automorphism: ``A.conjugate().conjugate() == A`` and 
+        ``(A*B).conjugate() == B.conjugate() * A.conjugate()``
 
         Returns
         -------
@@ -434,12 +443,36 @@ class Accum:
 
         Notes
         -----
-        Equivalent to Lounesto's ``A̅`` notation.
+        Equivalent to Lounesto's :math:`\bar{A}` (over bar) notation.
         """
+
         other = self.copy()
         for i in range(self.bases):
             n = Clif.Grade[i] & 3
             if n == 1 or n == 2:
+                other.Reg[i] = -other.Reg[i]
+        return other
+
+    def automorph(self) -> 'Accum':
+        r"""Grade involution.
+
+        Negates coefficients of odd grade, :math:`g \bmod 4 \in \{1, 3\}`.
+
+        This is an automorphism:  ``A.automorph().automorph() == A`` and 
+        ``(A*B).automorph() == A.automorph() * B.automorph()``
+
+        Returns
+        -------
+        Accum
+            The grade involution of ``self``; ``self`` is not modified.
+
+        Notes
+        -----
+        Equivalent to Lounesto's :math:`\hat{A}` (over hat) notation.
+        """
+        other = self.copy()
+        for i in range(self.bases):
+            if Clif.Grade[i] & 1:
                 other.Reg[i] = -other.Reg[i]
         return other
 
@@ -467,13 +500,12 @@ class Accum:
         Returns
         -------
         Accum
-            Random values
+            Random values (normal distribution)
 
         Notes
         -----
-        With this method, choice of signature and dimension have already been decided.
-        We just get some random value.
-        Principly used for testing.
+        The choice of signature and dimension have already been decided.
+        We just get some random values.  (Principly used for testing.)
         
         """
         return Accum(np.random.normal(0.0, 1.0, Clif.bases()))

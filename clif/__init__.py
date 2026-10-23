@@ -25,6 +25,8 @@ The package is organized as four cooperating layers:
    multivectors (grade projection, involutions, random multivectors, inverses
    for specific dimensions).
 
+5. **tools** — stand alone assistant functions 
+
 Inverse algorithms live in the :mod:`clif.inverse` sub-package:
 :func:`clif.inverse.fls_inverse` (Faddeev–LeVerrier–Souriau based, with
 :func:`even_inverse`/:func:`odd_inverse` variants and sparse counterparts),
@@ -72,6 +74,7 @@ from clif import context
 from clif import sign_table
 from clif import multivector
 from clif import util
+from clif import tools
 
 # ---- all a user should need ----
 from clif.context import Cl, Grade
@@ -82,6 +85,7 @@ __all__ = [
     "sign_table",
     "multivector",
     "util",
+    "tools",
     "Cl",
     "Grade",
     "Accum"

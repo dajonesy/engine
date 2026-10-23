@@ -2,6 +2,12 @@
 """
 The whole public surface of sparse_fls.
 
+October 2026: A tau-fls inverse is targeted for dimensions 4-15.
+DDTauInverse(), called here, is a superclass of TauInverse() 
+which supports double-double extended precision.  This support permits
+12D-15D which experience loss of precision at normal double precision to 
+return a workable inverse.  With extended precision comes parallel processing.
+
 You never need to read sparse_fls.py to use it. It exposes one object,
 TauInverse(sig), with one useful method:
 
@@ -14,8 +20,7 @@ Building a TauInverse costs real time (it constructs the shared table), so
 build once per signature and keep it. That is all this module does.
 """
 import numpy as np
-from .sparse_fls import TauInverse
-# sparse_fls should be v4
+from .sparse_fls_dd import DDTauInverse
 
 _CACHE = {}
 
@@ -30,7 +35,7 @@ def get_inverter(sig):
     d = len(sig)
     key = (int(d), tuple(int(s) for s in sig))
     if key not in _CACHE:
-        _CACHE[key] = TauInverse(key[0], list(key[1]))
+        _CACHE[key] = DDTauInverse(key[0], list(key[1]))
     return _CACHE[key]
 
 def inverse(A, sig):

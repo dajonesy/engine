@@ -3,8 +3,10 @@
 High level multivector inverse model.
 
 This module is an unoptimized working example of a novel inverse method.
-It is restricted to dimensions 4-11.
-On import, two tables are created to serve dimensions 4-11:
+It is primarily for dimensions 4-11, which perform well with double precision.
+To see the effect where extended precision becomes important 12D and 13D are included.
+
+On import, two tables are created to serve dimensions 4-13:
 
 * :data:`Tweak[d-4]` -- FLS coefficients used to tweak the scalar
   (and for odd dimensions, the pseudoscalar also) in between repeated
@@ -25,8 +27,19 @@ invo_8   = [ 1]*128 + [-1]*128
 invo_9   = [ 1]*128 + [-1]*128 + [-1]*128 + [ 1]*128
 invo_10  = [ 1]*256 + [-1]*256 + [-1]*256 + [ 1]*256
 invo_11  = [ 1]*256 + [-1]*256 + [-1]*256 + [ 1]*256 + [-1]*256 + [ 1]*256 + [ 1]*256 + [-1]*256
+invo_12  = [ 1]*512 + [-1]*512 + [-1]*512 + [ 1]*512 + [-1]*512 + [ 1]*512 + [ 1]*512 + [-1]*512
+invo_13 = ([ 1]*512 + [-1]*512 + [-1]*512 + [ 1]*512 + [-1]*512 + [ 1]*512 + [ 1]*512 + [-1]*512 +
+           [-1]*512 + [ 1]*512 + [ 1]*512 + [-1]*512 + [ 1]*512 + [-1]*512 + [-1]*512 + [ 1]*512)
+invo_14 =  ([ 1]*1024 + [-1]*1024 + [-1]*1024 + [ 1]*1024 + [-1]*1024 + [ 1]*1024 + [ 1]*1024 + [-1]*1024 +
+            [-1]*1024 + [ 1]*1024 + [ 1]*1024 + [-1]*1024 + [ 1]*1024 + [-1]*1024 + [-1]*1024 + [ 1]*1024 )
+invo_15 =  ([ 1]*1024 + [-1]*1024 + [-1]*1024 + [ 1]*1024 + [-1]*1024 + [ 1]*1024 + [ 1]*1024 + [-1]*1024 +
+            [-1]*1024 + [ 1]*1024 + [ 1]*1024 + [-1]*1024 + [ 1]*1024 + [-1]*1024 + [-1]*1024 + [ 1]*1024 +
+            [-1]*1024 + [ 1]*1024 + [ 1]*1024 + [-1]*1024 + [ 1]*1024 + [-1]*1024 + [-1]*1024 + [ 1]*1024 +
+            [ 1]*1024 + [-1]*1024 + [-1]*1024 + [ 1]*1024 + [-1]*1024 + [ 1]*1024 + [ 1]*1024 + [-1]*1024 )
 
-involution_fix = (invo_4, invo_5, invo_6, invo_7, invo_8, invo_9, invo_10, invo_11)
+involution_fix = (invo_4, invo_5, invo_6, invo_7, 
+                  invo_8, invo_9, invo_10, invo_11, 
+                  invo_12, invo_13, invo_14, invo_15)
 
 Involution = []
 for invo in involution_fix:
@@ -38,7 +51,13 @@ tweak_4_5   = [1]
 tweak_6_7   = [3, 1, 1/3]
 tweak_8_9   = [7, 3, 5/3, 1, 3/5, 1/3, 1/7]
 tweak_10_11 = [15, 7, 13/3, 3, 11/5, 5/3, 9/7, 1, 7/9, 3/5, 5/11, 1/3, 3/13, 1/7, 1/15]
-Tweak = (tweak_4_5, tweak_4_5, tweak_6_7, tweak_6_7, tweak_8_9, tweak_8_9, tweak_10_11, tweak_10_11)
+tweak_12_13 = [31, 15, 29/3, 7, 27/5, 13/3, 25/7, 3, 23/9, 11/5, 21/11, 5/3, 19/13, 9/7, 17/15, 1, 
+               15/17, 7/9, 13/19, 3/5, 11/21, 5/11, 9/23, 1/3, 7/25, 3/13, 5/27, 1/7, 3/29, 1/15, 1/31]
+tweak_14_15 = [m / (64-m) for m in range(63,1,-1)]
+
+Tweak = (tweak_4_5, tweak_4_5, tweak_6_7, tweak_6_7, 
+         tweak_8_9, tweak_8_9, tweak_10_11, tweak_10_11, 
+         tweak_12_13, tweak_12_13, tweak_14_15, tweak_14_15)
 
 
 # T = tweaks, I = involution template, A = multivector
@@ -57,7 +76,7 @@ def inverse( A ):
     """
 
     n = A.dimensions
-    if n < 4 or n > 11:
+    if n < 4 or n > 15:
         return None
     odd = 1 == (1 & n)
     if odd:
@@ -86,8 +105,8 @@ def inverse( A ):
 
     # ---------
     # The polynomial's final product collapses to the center of the algebra:
-    # a scalar for even d, a scalar + pseudoscalar for odd d.  This is where
-    # the determinant lives.
+    # a scalar for even d, a scalar + pseudoscalar for odd d.  
+    # This is where the determinant lives.
 
     if odd:  # E[0, PSEUDO] are the only non-zero elements
         # E = DC  ->  1/C = D/E = E'D / E'E

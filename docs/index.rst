@@ -30,7 +30,7 @@ behind it for when you need details.
    :maxdepth: 2
    :caption: Development Notebooks
 
-   notebooks/development/index
+   notebooks/index
 
 
 Indices

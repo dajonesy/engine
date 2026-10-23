@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "clif: High-Dimensional Clifford and Geometric Algebra Engine"
+authors:
+  - family-names: "Jones"
+    given-names: "David Arthur"
+version: "0.1.0"
+date-released: "2026-09-17"
+repository-code: "https://github.com/dajonesy/engine"
+url: "https://dajonesy.github.io/engine/"
+license: "MIT"
+abstract: "A Python library optimized with NumPy and Numba for high-dimensional Clifford and Geometric Algebra multivector operations, involution generalizations, and inverse algorithms using ordinal bitwise basis blade indexing."
+keywords:
+  - "geometric algebra"
+  - "clifford algebra"
+  - "multivector inverse"
+  - "numba"
+  - "python"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Jones"
+      given-names: "David Arthur"
+  title: "Another 6D multivector inverse"
+  journal: "Advances in Applied Clifford Algebras"
+  year: 2026
+  doi: "10.1007/s00006-026-01455-5"

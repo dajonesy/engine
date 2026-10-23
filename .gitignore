@@ -2,6 +2,7 @@
 # Python build artifacts
 # ------------------------------------------------------------------
 __pycache__/
+.ruff_cache/
 *.py[cod]
 *$py.class
 *.so
@@ -13,7 +14,15 @@ dist/
 *.egg
 .eggs/
 
-# Virtual environments
+# Bytecode & Caches
+__pycache__/
+*.py[cod]
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Sphinx docs build output
+docs/_build/# Virtual environments
 .venv/
 venv/
 env/
@@ -58,3 +67,6 @@ scratch/
 # Personal Claude Code instructions (not shared)
 # ------------------------------------------------------------------
 CLAUDE.local.md
+CLAUDE.md
+
+/notebooks/

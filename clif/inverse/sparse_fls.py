@@ -1,5 +1,24 @@
-#file: clif/inverse/sparse_fls.py
-""" tau-domain FLS inverse on even tables.
+#file: clif/inverse/sparse_fls.py   (v7)
+""" tau-domain FLS inverse on even tables, with native odd tables for
+degenerate odd signatures.
+
+v7 changes
+----------
+  * Table and bookend construction vectorised via blade_signs() (numpy over
+    whole rows); arrays are identical to v6's, term order included, so
+    results are bit-for-bit unchanged. Build time at d=11 drops from ~8 s.
+    blade_sign() is kept as the scalar reference and porting target.
+
+v6 changes
+----------
+  * Degenerate signatures Cl(p, q, r) are supported by the inverse.
+  * Odd d keeps the shared even table (u + w I) as a FAST PATH only when
+    sig[:d-1] has no null generator. Otherwise it builds an OddTable over
+    the full odd tau-domain (the v3 layout: scalar row by S0, pseudoscalar
+    row by complement matching with a directly computed sign PSG, the rest
+    rectangular). See "Why the fast path fails under degeneracy" below.
+  * A vanishing denominator raises ZeroDivisionError instead of returning
+    inf/nan.
 
 Usage
 -----
@@ -32,9 +51,11 @@ Vocabulary
 
 Architecture
 ------------
-Tables are built for EVEN dimensions only (4, 6, 8, 10). An odd dimension d
-reuses the table of d-1 by writing every tau-element as u + w*I with u, w in
-the even (d-1) domain. I is the pseudoscalar for dimension d:
+Tables are built for EVEN dimensions (4, 6, 8, 10), plus an OddTable only for
+odd signatures with a null generator in sig[:d-1] (see v6 changes). On the
+fast path an odd dimension d reuses the table of d-1 by writing every
+tau-element as u + w*I with u, w in the even (d-1) domain. I is the
+pseudoscalar for dimension d:
 
     (u1 + w1 I)(u2 + w2 I) = (u1 u2 + I^2 w1 w2) + (u1 w2 + w1 u2) I
 
@@ -82,9 +103,21 @@ Signature discipline (the sharp edge of this design)
         pssign  = blade_sign(m, PS, sig)     per-slot +/-1, a free permutation
   * Mixed signatures change table signs, never table shape.
   * Degenerate metrics: zero-signed terms are kept in place with sign 0 and
-    skipped at runtime, so rows stay rectangular. The INVERSE refuses them
-    (build-time assert); the PRODUCT supports them. That path is reachable
-    only via EvenTable/mul_even directly.
+    skipped at runtime, so rows stay rectangular. Even d needs nothing more.
+
+Why the fast path fails under degeneracy (odd d)
+------------------------------------------------
+Complement closure -- the odd domain is the even domain plus its
+complements -- is a SHAPE property and holds in every metric. The fast path
+realises it MULTIPLICATIVELY, storing A[m ^ PS] = pssign[m] * w[m] with
+pssign[m] = sign(e_m I). When slot m contains a null generator, e_m I = 0,
+pssign[m] = 0, and that complement coefficient is written as zero by
+bookend1 before the sweep begins. A single null placed LAST never enters
+sig[:d-1], so the fast path still holds there; any other degenerate odd
+signature loses coefficients (e.g. 240 of 496 at sig = [1]*9 + [0]*2).
+The OddTable stores the complement coefficients directly and signs each
+complement pair by the pure swap sign, which is never zero because the
+pair is disjoint. This is the v3 construction.
 
 ACCURACY NOTE: for exactly one signature per dimension -- (7,2) at d=9,
 (8,2) at d=10, (8,3) at d=11 -- blade_sign(a,a,sig)*tau[a] is +1 for EVERY
@@ -178,7 +211,66 @@ def blade_sign(a, b, sig):
             s *= si                                    # si == 0 propagates
     return s
 
+
+def _masks(sig):
+    neg = sum(1 << i for i, s in enumerate(sig) if s < 0)
+    nul = sum(1 << i for i, s in enumerate(sig) if s == 0)
+    return neg, nul
+
+
+def blade_signs(a, b, sig):
+    """blade_sign over integer arrays a, b (broadcast), returning int8.
+
+    Same arithmetic as blade_sign: swap parity from masked popcounts, metric
+    parity from a & b & negmask, zero where a & b touches a null generator.
+    """
+    a = np.asarray(a, dtype=np.int64)
+    b = np.asarray(b, dtype=np.int64)
+    d = len(sig)
+    pop = _POP[:1 << d] if d <= _POPBITS else \
+        np.array([bin(i).count("1") for i in range(1 << d)], dtype=np.int64)
+    neg, nul = _masks(sig)
+    a, b = np.broadcast_arrays(a, b)
+    sw = np.zeros(a.shape, dtype=np.int64)
+    for i in range(d):
+        sw += ((b >> i) & 1) * pop[a >> (i + 1)]
+    par = (sw + pop[a & b & neg]) & 1
+    return np.where((a & b & nul) != 0, 0, 1 - 2 * par).astype(np.int8)
+
+
+_POPBITS = 11
+_POP = np.array([bin(i).count("1") for i in range(1 << _POPBITS)], dtype=np.int64)
+
 # ------------------------------------------------------------ even tables ---
+
+def _pair_rows(slots, rows, sig):
+    """Rectangular pair table for the output tau-indexes in `rows`.
+
+    For each output c = slots[i], i in rows, keep the pairs (a, b) of
+    tau-elements with a ^ b == c and a < b, in ascending a -- the v6 order.
+    Returns TA, TB (int32 tau-indexes), S (int8 signs), pairs.
+    """
+    sl = np.asarray(slots, dtype=np.int64)
+    posf = np.full(1 << len(sig), -1, dtype=np.int64)
+    posf[sl] = np.arange(len(sl))
+    rows = np.asarray(rows, dtype=np.int64)
+    a = np.broadcast_to(sl[None, :], (len(rows), len(sl)))
+    b = a ^ sl[rows][:, None]
+    pb = posf[b]
+    keep = (pb >= 0) & (a < b)                     # keep one of (a,b),(b,a)
+    counts = keep.sum(axis=1)
+    pairs = int(counts[0])
+    assert np.all(counts == pairs), "not rectangular"
+    ri, ci = np.nonzero(keep)                      # row-major = v6 order
+    A, B = a[ri, ci], b[ri, ci]
+    S = blade_signs(A, B, sig)
+    assert np.array_equal(S, blade_signs(B, A, sig)), \
+        "pair (a,b)/(b,a) sign mismatch: symmetric fold invalid"
+    sh = (len(rows), pairs)
+    return (ci.astype(np.int32).reshape(sh),       # pos[a] == ci
+            pb[ri, ci].astype(np.int32).reshape(sh),
+            S.reshape(sh), pairs)
+
 
 class EvenTable:
     """Rectangular tau-domain multiplication table for an even dimension.
@@ -194,41 +286,70 @@ class EvenTable:
         self.slots = tau_slots(d)
         n = len(self.slots)
         assert self.slots[0] == 0, "slot 0 must be the scalar blade"
-        pos = {m: i for i, m in enumerate(self.slots)}      # build-time only
+        sl = np.asarray(self.slots, dtype=np.int64)
 
         # scalar output row: a ^ b == 0 forces b == a, so this is the squares
-        self.S0 = np.array([blade_sign(m, m, sig) for m in self.slots],
-                           dtype=np.int8)
-
-        rows = []
-        for i in range(1, n):
-            c = self.slots[i]
-            r = []
-            for a in self.slots:
-                b = a ^ c
-                if b not in pos or a >= b:              # keep one of (a,b),(b,a)
-                    continue
-                s = blade_sign(a, b, sig)
-                assert s == blade_sign(b, a, sig), \
-                    "pair (a,b)/(b,a) sign mismatch: symmetric fold invalid"
-                r.append((pos[a], pos[b], s))
-            rows.append(r)
-        self.pairs = len(rows[0]) if rows else 0
-        assert all(len(r) == self.pairs for r in rows), "not rectangular"
-
-        sh = (n - 1, self.pairs)
-        self.TA = np.array([[k[0] for k in r] for r in rows],
-                           dtype=np.int32).reshape(sh)
-        self.TB = np.array([[k[1] for k in r] for r in rows],
-                           dtype=np.int32).reshape(sh)
-        self.S = np.array([[k[2] for k in r] for r in rows],
-                          dtype=np.int8).reshape(sh)
+        self.S0 = blade_signs(sl, sl, sig)
+        self.TA, self.TB, self.S, self.pairs = _pair_rows(
+            self.slots, range(1, n), sig)
 
     def nbytes(self):
         return sum(x.nbytes for x in (self.S0, self.TA, self.TB, self.S))
 
     def real_mults(self):
         return len(self.slots) + 2 * self.pairs * (len(self.slots) - 1)
+
+
+class OddTable:
+    """Rectangular tau-domain table for an odd dimension, built natively.
+
+    The two central outputs are perfect matchings of the domain and are
+    handled outside the rectangular rows:
+        scalar        a ^ a = 0        sign S0[i]  = sign(e_a e_a)
+        pseudoscalar  a ^ (a^PS) = PS  sign PSG[i] = sign(e_a e_{a^PS})
+    PSG is computed DIRECTLY on the disjoint pair, never as S0 * IS: that
+    fusion expresses a nonzero sign as a product of two metric-carrying
+    signs and fails as 0 * 0 under degeneracy.
+        IS[i]  = sign(e_a I), may be 0: a genuine product, used by the
+                 centre multiply (a + b I) X.
+        comp[i] = tau-index of slots[i] ^ PS.
+    Every other output row has the same length `pairs` (asserted).
+    """
+
+    def __init__(self, d, sig):
+        assert d % 2 == 1, "OddTable is for odd dimensions"
+        assert len(sig) == d
+        self.d, self.sig = d, list(sig)
+        self.slots = tau_slots(d)
+        n = len(self.slots)
+        assert self.slots[0] == 0, "slot 0 must be the scalar blade"
+        PS = (1 << d) - 1
+        assert PS in self.slots, "odd tau-domain must contain the pseudoscalar"
+        self.pp = self.slots.index(PS)
+        sl = np.asarray(self.slots, dtype=np.int64)
+        posf = np.full(1 << d, -1, dtype=np.int64)
+        posf[sl] = np.arange(n)
+
+        self.S0 = blade_signs(sl, sl, sig)
+        self.comp = posf[sl ^ PS].astype(np.int32)
+        assert np.all(self.comp >= 0), "odd tau-domain not closed under complement"
+        self.PSG = blade_signs(sl, sl ^ PS, sig)
+        self.IS = blade_signs(sl, PS, sig)
+        assert np.all(self.PSG != 0), "complement pairs are disjoint; PSG never 0"
+        if all(s != 0 for s in sig):
+            assert np.array_equal(self.PSG, self.S0 * self.IS), \
+                "non-degenerate fusion identity PSG = S0 * IS broken"
+
+        ro = [i for i in range(1, n) if i != self.pp]  # central rows excluded
+        self.RO = np.array(ro, dtype=np.int32)
+        self.TA, self.TB, self.S, self.pairs = _pair_rows(self.slots, ro, sig)
+
+    def nbytes(self):
+        return sum(x.nbytes for x in (self.S0, self.PSG, self.IS, self.comp,
+                                      self.RO, self.TA, self.TB, self.S))
+
+    def real_mults(self):
+        return 2 * len(self.slots) + 2 * self.pairs * self.TA.shape[0]
 
 # ---------------------------------------------------------------- kernels ---
 
@@ -326,6 +447,56 @@ def coo_apply(a, b, o, s, A, X, out):
     for k in range(a.shape[0]):
         out[o[k]] += s[k] * A[a[k]] * X[b[k]]
 
+
+@njit(cache=True)
+def mul_oddn(X, Y, S0, PSG, comp, pp, RO, TA, TB, S, out):
+    """Native odd tau-domain product. 2M + 2*pairs*rows mults."""
+    acc = 0.0
+    for k in range(S0.shape[0]):                       # scalar: diagonal
+        s = S0[k]
+        if s != 0:
+            acc += s * X[k] * Y[k]
+    out[0] = acc
+    acc = 0.0
+    for k in range(PSG.shape[0]):                      # pseudoscalar: complement
+        acc += PSG[k] * X[k] * Y[comp[k]]
+    out[pp] = acc
+    for r in range(TA.shape[0]):
+        acc = 0.0
+        for k in range(TA.shape[1]):
+            s = S[r, k]
+            if s == 0:                                 # degenerate term
+                continue
+            a = TA[r, k]
+            b = TB[r, k]
+            p = X[a] * Y[b] + X[b] * Y[a]
+            if s > 0:
+                acc += p
+            else:
+                acc -= p
+        out[RO[r]] = acc
+
+
+@njit(cache=True)
+def centre_oddn(X, Y, S0, PSG, comp):
+    """Scalar and pseudoscalar components of a native odd product. 2M mults."""
+    e0 = 0.0
+    eps = 0.0
+    for k in range(S0.shape[0]):
+        e0 += S0[k] * X[k] * Y[k]
+        eps += PSG[k] * X[k] * Y[comp[k]]
+    return e0, eps
+
+
+@njit(cache=True)
+def centre_muln(a, b, IS, comp, X, out):
+    """(a + b I) X in the native layout. X I is a signed complement
+    permutation with sign IS, which is 0 where e_m I vanishes."""
+    for i in range(X.shape[0]):
+        out[i] = a * X[i]
+    for i in range(X.shape[0]):
+        out[comp[i]] += b * IS[i] * X[i]
+
 # ---------------------------------------------------------------- driver ----
 
 _TWEAK = {
@@ -343,22 +514,45 @@ _TWEAK = {
 class TauInverse:
     """Compiled tau-domain inverse for Cl(sig), 4 <= d <= 11."""
 
-    def __init__(self, d, sig):
+    def __init__(self, d, sig, native=None):
+        """native: None chooses automatically (OddTable only when an odd
+        signature has a null generator in sig[:d-1]); True/False forces
+        the odd layout, e.g. to cross-validate the two paths."""
         assert 4 <= d <= 11, "supported range is d = 4..11 (model oracle range)"
         assert len(sig) == d
         sig = list(sig)
-        assert all(s != 0 for s in sig), (
-            "degenerate signature: the tau-domain inverse is undefined "
-            "(needs radical split + Neumann correction)")
+        assert all(s in (-1, 0, 1) for s in sig), "sig entries must be -1, 0, 1"
         self.d, self.sig, self.odd = d, sig, bool(d & 1)
         self.n = 1 << d
         self.tau = tau_signs(d).astype(np.float64)
         self.tweak = _TWEAK[d]
+        PS = self.n - 1
+
+        if native is None:
+            native = self.odd and any(s == 0 for s in sig[:d - 1])
+        assert not (native and not self.odd), "native layout is odd-d only"
+        self.native = bool(native)
+
+        if self.native:
+            self.table = OddTable(d, sig)
+            self.slots = self.table.slots
+            self.width = len(self.slots)
+            self.Se = self.width // 2
+            self.pidx = self.table.pp                 # pseudoscalar tau-index
+            self.I2 = float(blade_sign(PS, PS, sig))
+            self.pos = {m: i for i, m in enumerate(self.slots)}
+            self._build_bookends()
+            self._scratch = [np.zeros(self.width) for _ in range(3)]
+            self._t = []
+            self._C = np.zeros(self.width)
+            self._R = np.zeros(self.n)
+            return
 
         de = d - 1 if self.odd else d
         # SIGNATURE CARE: odd d builds its table from the LOW generators only.
         self.table = EvenTable(de, sig[:de])
         self.Se = len(self.table.slots)
+        self.pidx = self.Se                           # Z[Se] is the pseudoscalar
 
         if self.odd:
             PS = self.n - 1
@@ -392,35 +586,35 @@ class TauInverse:
         to hold its rows rectangular.
         """
         n, sig, tau = self.n, self.sig, self.tau
-        dom = set(self.slots)
-        b1a, b1b, b1o, b1s, b1d = [], [], [], [], []
-        for a in range(n):
-            s = blade_sign(a, a, sig) * tau[a]
-            if s:
-                b1a.append(a); b1b.append(a); b1o.append(self._store(0))
-                b1s.append(s); b1d.append(0.0)
-            for b in range(a + 1, n):
-                c = a ^ b
-                if c not in dom:
-                    continue
-                s = blade_sign(a, b, sig) * tau[b]
-                if s == 0:
-                    continue
-                b1a.append(a); b1b.append(b); b1o.append(self._store(c))
-                b1s.append(s * self._sgn(c)); b1d.append(1.0)
-        self.B1 = tuple(np.array(x, dtype=np.int32) for x in (b1a, b1b, b1o))
+        sl = np.asarray(self.slots, dtype=np.int64)
+        posf = np.full(n, -1, dtype=np.int64)       # the int32 pos[] of the
+        posf[sl] = np.arange(len(sl))               # porting notes
+        sgnf = np.zeros(n)
+        sgnf[sl] = [self._sgn(m) for m in self.slots]
+
+        # B1: pairs a <= b in row-major order -- the diagonal square first,
+        # then b > a ascending -- restricted to domain outputs c = a ^ b.
+        A, B = np.triu_indices(n)
+        C = A ^ B
+        keep = posf[C] >= 0
+        A, B, C = A[keep], B[keep], C[keep]
+        s = blade_signs(A, B, sig) * tau[B]          # tau[b] == tau[a] on diag
+        nz = s != 0
+        A, B, C, s = A[nz], B[nz], C[nz], s[nz]
+        self.B1 = (A.astype(np.int32), B.astype(np.int32),
+                   posf[C].astype(np.int32))
         self.B1S = np.ascontiguousarray(
-            np.array(b1s) * (1.0 + np.array(b1d)))       # folds the free x2
-        b2a, b2b, b2o, b2s = [], [], [], []
-        for a in range(n):                                # tau(A) component
-            for c in self.slots:                          # C^-1 component
-                s = blade_sign(a, c, sig) * tau[a]
-                if s == 0:
-                    continue
-                b2a.append(a); b2b.append(self._store(c)); b2o.append(a ^ c)
-                b2s.append(s * self._sgn(c))
-        self.B2 = tuple(np.array(x, dtype=np.int32) for x in (b2a, b2b, b2o))
-        self.B2S = np.ascontiguousarray(np.array(b2s, dtype=np.float64))
+            s * sgnf[C] * (1.0 + (A != B)))          # folds the free x2
+
+        # B2: tau(A) component a (outer) times C^-1 component c (inner).
+        A = np.repeat(np.arange(n, dtype=np.int64), len(sl))
+        Cc = np.tile(sl, n)
+        s = blade_signs(A, Cc, sig) * tau[A]
+        nz = s != 0
+        A, Cc, s = A[nz], Cc[nz], s[nz]
+        self.B2 = (A.astype(np.int32), posf[Cc].astype(np.int32),
+                   (A ^ Cc).astype(np.int32))
+        self.B2S = np.ascontiguousarray(s * sgnf[Cc])
 
     def _store(self, blade):
         """tau-index of a domain blade in the working representation."""
@@ -432,7 +626,7 @@ class TauInverse:
         In the odd representation the complement half stores w, where
         A[m^PS] = pssign[m] * w[m]; the low half stores u directly.
         """
-        if not self.odd:
+        if not self.odd or self.native:
             return 1.0
         i = self.pos[blade]
         return 1.0 if i < self.Se else self.pssign[i - self.Se]
@@ -444,7 +638,10 @@ class TauInverse:
         X, Y, out have length self.width; out must not alias X or Y.
         """
         T = self.table
-        if self.odd:
+        if self.native:
+            mul_oddn(X, Y, T.S0, T.PSG, T.comp, T.pp, T.RO, T.TA, T.TB, T.S,
+                     out)
+        elif self.odd:
             mul_odd(X, Y, self.Se, self.I2, T.S0, T.TA, T.TB, T.S,
                     out, self._t[0], self._t[1], self._t[2])
         else:
@@ -473,17 +670,20 @@ class TauInverse:
         """
         D, W = self._scratch[0], self._scratch[1]
         D[:] = C
-        T, Se = self.tweak, self.Se
+        T, Se, P = self.tweak, self.Se, self.pidx
         D[0] *= -T[0]
         if self.odd:
-            D[Se] *= -T[0]
+            D[P] *= -T[0]
         for t in T[1:]:
             self.mul(D, C, W)
             D, W = W, D
             D[0] *= -t
             if self.odd:
-                D[Se] *= -t
-        if self.odd:
+                D[P] *= -t
+        if self.native:
+            tb = self.table
+            e0, eps = centre_oddn(D, C, tb.S0, tb.PSG, tb.comp)
+        elif self.odd:
             e0, eps = centre_odd(D, C, Se, self.I2, self.table.S0)
         else:
             e0, eps = mul_even_scalar(D, C, self.table.S0), 0.0
@@ -522,10 +722,17 @@ class TauInverse:
         if self.odd:
             # composite centre: denominator is E' E with E' = E0 - EPS I
             det = e0 * e0 - self.I2 * eps * eps
+            if det == 0.0:
+                raise ZeroDivisionError("multivector is not invertible")
             rC = self._scratch[2]
-            centre_mul(e0, -eps, self.I2, D, self.Se, rC)
+            if self.native:
+                centre_muln(e0, -eps, self.table.IS, self.table.comp, D, rC)
+            else:
+                centre_mul(e0, -eps, self.I2, D, self.Se, rC)
             rC /= det
         else:
+            if e0 == 0.0:
+                raise ZeroDivisionError("multivector is not invertible")
             rC = D / e0
         if polish_steps:
             rC = self.polish(C, rC, polish_steps)
@@ -535,8 +742,11 @@ class TauInverse:
     def cost(self):
         """Real multiplication counts. Matches the paper's table."""
         M = self.table.real_mults()
-        per_mul = 4 * M if self.odd else M
-        tail = 4 * self.Se if self.odd else len(self.table.slots)
+        if self.native:
+            per_mul, tail = M, 2 * self.width
+        else:
+            per_mul = 4 * M if self.odd else M
+            tail = 4 * self.Se if self.odd else len(self.table.slots)
         sweep = (len(self.tweak) - 1) * per_mul + tail
         centre = (2 * self.width + 4) if self.odd else 0
         return dict(table_bytes=self.table.nbytes(), mults_per_mul=per_mul,

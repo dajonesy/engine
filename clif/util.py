@@ -622,12 +622,14 @@ def I6(A: Accum) -> Accum:
 # =============================================================================
 # 2026.02: copied these routines from util8D.py -- they seem to be general purpose
 
+from clif.context import Grade
+
 def GradeRestrictedRandom(grades):
-    A = Clifford.Accum()
-    samples = numpy.random.normal(size=Clifford.bases())
+    A = Accum()
+    samples = numpy.random.normal(size = A.bases())
 #    samples = numpy.array( random.normal( 0.0, 1.0, Clifford.bases() ) ).tolist()
-    for i in range(Clifford.bases()):
-        if Clifford.Grade[i] in grades:
+    for i in range(A.bases()):
+        if Grade[i] in grades:
             A.Reg[i] = samples[i]
     return A
 

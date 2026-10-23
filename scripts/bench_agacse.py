@@ -1,10 +1,10 @@
 """bench_agacse.py — timings for the AGACSE'26 talk.
 
-Your package and pygae are both named `clifford`, so they cannot be imported
-in the same process. Run twice, from different directories:
+`engine` and `pygae` versions are timed for comparision.
 
-    cd ~/project/engine       && python3 ~/bench_agacse.py engine
-    cd /tmp                   && python3 ~/bench_agacse.py pygae
+    cd ~/project/engine/scripts 
+    conda run -n pygae python3 bench_agacse.py pygae
+    conda run -n clifford-dev python3 bench_agacse.py engine
 
 Each prints a markdown table row set. Paste both into the slide.
 """
@@ -26,14 +26,14 @@ def timeit(fn, reps):
 
 
 def bench_engine():
-    import clifford.context as Clif
-    from clifford.multivector import Accum
+    import clif.context as Clif
+    from clif.multivector import Accum
     print("| d | engine inverse (us) | residual |")
     print("|---|---|---|")
     for d in DIMS:
         try:
             Clif.Cl(d)
-            A = Accum(); A.random()
+            A = Accum().random()
             rA = A.inverse()
             r = (A * rA).Reg
             res = max(abs(r[0] - 1.0), np.abs(r[1:]).max())
