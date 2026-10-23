@@ -32,7 +32,7 @@ extensions = [
     'myst_nb',                  # execute and render Jupyter notebooks
 ]
 
-nb_execution_mode = "cache"     # re-execute only when notebook source changes
+nb_execution_mode = "off" if os.environ.get("READTHEDOCS") else "cache"
 nb_execution_timeout = 600      # seconds per notebook
 
 # Have autosummary build per-module rst stubs automatically.

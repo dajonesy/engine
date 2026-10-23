@@ -2,18 +2,28 @@
 requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
+
 [project]
 name = "clif-ga"
 version = "0.1.0"
 description = "Clifford-algebra engine: multivector inverse algorithms"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "D. A. Jones" }]
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",
     "numba>=0.58",
 ]
 
+[project.urls]
+Homepage = "https://github.com/dajonesy/engine"
+Documentation = "https://clif-ga.readthedocs.io"
+
 [project.optional-dependencies]
-dev = ["jupyter", "ipykernel", "ruff", "myst-nb", "jupyter-cache", "matplotlib", "pytest"]
+dev = ["jupyter", "ipykernel", "ruff", "myst-nb", "jupyter-cache",
+         "matplotlib", "pytest", "sphinx", "furo"]
+
 
 [tool.setuptools.packages.find]
 where = ["."]
