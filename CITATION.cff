@@ -6,7 +6,7 @@ authors:
   - family-names: "Jones"
     given-names: "David Arthur"
 version: "0.1.0"
-date-released: "2026-09-17"
+date-released: "2026-10-23"
 repository-code: "https://github.com/dajonesy/engine"
 url: "https://dajonesy.github.io/engine/"
 license: "MIT"
