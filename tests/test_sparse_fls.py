@@ -28,11 +28,6 @@ from clif.inverse.sparse_fls import (
 )
 from clif.inverse.tau_api import get_inverter
 
-try:
-    from clif.inverse import sparse_fls_v2 as SFV2
-except ImportError:
-    SFV2 = None
-
 DIMS = list(range(4, 12))
 ODD  = [d for d in DIMS if d % 2 == 1]
 
@@ -136,18 +131,3 @@ def test_dimension_guard(d):
     sig = _EUC[:d]
     with pytest.raises(AssertionError):
         TauInverse(d, sig)
-
-
-V2_DIMS = [d for d in DIMS if d >= 6]
-
-@pytest.mark.skipif(SFV2 is None, reason="sparse_fls_v2 not present")
-@pytest.mark.parametrize("d", V2_DIMS)
-def test_v2_v3_equivalence(d):
-    _register(d)
-    sig = Clif.get_signature()
-    rng = np.random.default_rng(600 + d)
-    A = Accum(rng.standard_normal(1 << d))
-    r2 = SFV2.TauInverse(d, sig).inverse(A.Reg)
-    r3 = get_inverter(sig).inverse(A.Reg)
-    diff = np.max(np.abs(r2 - r3)) / np.max(np.abs(r2))
-    assert diff < TOL[d]

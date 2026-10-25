@@ -19,15 +19,18 @@ import pytest
 import clif.context as Clif
 from clif.multivector import Accum
 from clif.util import inverse_involution
-from clif.inverse.fls import _make_tweak
 from clif.inverse import model_inverse as MI
+
+def _make_tweak(d: int) -> np.ndarray:
+    """FLS ladder n/k - 1, k = 1 .. n-1, with n = 2^(d//2 - 1)."""
+    n = 1 << (d // 2 - 1)
+    return np.array([n / k - 1.0 for k in range(1, n)])
 
 DIMS = list(range(4, 12))
 
 # residual tolerance: machine precision through d=9, conditioning after
 TOL = {4: 1e-12, 5: 1e-12, 6: 1e-11, 7: 1e-11, 8: 1e-9, 9: 1e-9,
        10: 1e-5, 11: 1e-5}
-
 
 def _register(d: int) -> None:
     """Register a Euclidean context Cl(d, 0) with the engine."""
@@ -39,6 +42,7 @@ def _register(d: int) -> None:
 
 @pytest.mark.parametrize("d", DIMS)
 def test_involution_matches_closed_form(d):
+    _register(d)
     tab = np.array(MI.Involution[d - 4], dtype=np.float64)
     assert np.array_equal(tab, inverse_involution(d))
 
