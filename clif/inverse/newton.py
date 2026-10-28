@@ -38,7 +38,7 @@ def newton_schulz(A: Accum, X0: Accum, tol: float = 1e-13, max_iter: int = 20) -
         Refined inverse, satisfying A * result ≈ e0 within tol.
     """
     
-    VERBOSE = True
+    VERBOSE = False
     
     mul = Clif._ActiveTable.fast_mul
     a = A.Reg

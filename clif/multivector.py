@@ -268,10 +268,7 @@ class Accum:
         return A
     
     def inverse(self):
-        from clif.inverse import low_dim_inverse, model_inverse
-        if self.dimensions < 4:
-            return Accum( low_dim_inverse.inverse( self.Reg ))
-        elif 15 < self.dimensions:
+        if 15 < self.dimensions:
             raise NotImplementedError(
                 f"No supported inverse for this algebra "
                 f"signature = {Clif.get_signature()}; 15D limit."

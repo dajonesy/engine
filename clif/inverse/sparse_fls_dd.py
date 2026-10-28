@@ -36,6 +36,13 @@ chunks with v7's own _pair_rows (identical arrays, bounded peak memory), and
 overrides sweep, bookend1 (step down) and bookend2 (step up). Everything
 else -- inverse(), mul(), the odd centre -- is inherited.
 """
+
+# The dd row kernels and the step down / step up always run thread-parallel:
+# dd is used from d = 12 (and measured at d = 10, 11), where every product
+# has hundreds to thousands of rows, and parallel execution was 2.6-4.1x
+# faster at every d measured. Set False only to reproduce serial timings.
+PARALLEL = True
+
 import math
 import numpy as np
 from numba import njit, prange
@@ -121,7 +128,7 @@ def dd_mul_even_scalar(uh, ul, vh, vl, S0):
     return ah, al
 
 
-@njit(cache=True,parallel=True)
+@njit(cache=True,parallel=PARALLEL)
 def dd_mul_even(uh, ul, vh, vl, S0, TA, TB, S, outh, outl):
     """mul_even with u, v, out in dd. Same tables, same row order."""
     outh[0], outl[0] = dd_mul_even_scalar(uh, ul, vh, vl, S0)
@@ -184,7 +191,7 @@ def dd_centre_odd(Xh, Xl, Yh, Yl, Se, I2, S0):
     return e0h, e0l, eph, epl
 
 
-@njit(cache=True)
+@njit(cache=True,parallel=PARALLEL)
 def dd_mul_oddn(Xh, Xl, Yh, Yl, S0, PSG, comp, pp, RO, TA, TB, S, outh, outl):
     """mul_oddn (native odd layout) in dd."""
     ah = 0.0
@@ -204,7 +211,7 @@ def dd_mul_oddn(Xh, Xl, Yh, Yl, S0, PSG, comp, pp, RO, TA, TB, S, outh, outl):
         s = PSG[k]
         ah, al = dd_add(ah, al, s * ph, s * pl)
     outh[pp], outl[pp] = ah, al
-    for r in range(TA.shape[0]):
+    for r in prange(TA.shape[0]):
         ah = 0.0
         al = 0.0
         for k in range(TA.shape[1]):
@@ -364,7 +371,7 @@ def sign_of(a, b, neg, nul):
 
 
 
-@njit(cache=True)
+@njit(cache=True,parallel=PARALLEL)
 def step_down_kernel(A, tau, slots, sg, neg, nul, C):
     """C = A tau(A) on tau-domain outputs. Gather by output; no term list.
 
@@ -375,12 +382,12 @@ def step_down_kernel(A, tau, slots, sg, neg, nul, C):
     twice (C is tau-symmetric). n/2 multiplies per output.
     """
     n = A.shape[0]
-    acc = 0.0
+    acc0 = 0.0
     for a in range(n):                                 # scalar: diagonal
-        acc += sign_of(a, a, neg, nul) * tau[a] * A[a] * A[a]
-    C[0] = acc
+        acc0 += sign_of(a, a, neg, nul) * tau[a] * A[a] * A[a]
+    C[0] = acc0
     half = n >> 1
-    for i in range(1, slots.shape[0]):
+    for i in prange(1, slots.shape[0]):
         c = slots[i]
         h = 0
         while (c >> (h + 1)) != 0:
@@ -394,11 +401,11 @@ def step_down_kernel(A, tau, slots, sg, neg, nul, C):
         C[i] = 2.0 * sg[i] * acc
 
 
-@njit(cache=True)
+@njit(cache=True,parallel=PARALLEL)
 def step_up_kernel(A, rC, tau, slots, sg, neg, nul, R):
     """R = tau(A) rC over all outputs. Gather by output o: a = o ^ c."""
     n = A.shape[0]
-    for o in range(n):
+    for o in prange(n):
         acc = 0.0
         for i in range(slots.shape[0]):
             c = slots[i]
@@ -468,6 +475,7 @@ class DDTauInverse(TauInverse):
         assert all(s in (-1, 0, 1) for s in sig), "sig entries must be -1, 0, 1"
         self.d, self.sig, self.odd = d, sig, bool(d & 1)
         self.n = 1 << d
+        self.par = PARALLEL           # float64 products inherited from v8 (mul, polish)
         self.tau = tau_signs(d).astype(np.float64)
         self.N = 1 << (d // 2 - 1)
         self.tweak = [(self.N - 1 - k) / (k + 1) for k in range(self.N - 1)]

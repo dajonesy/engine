@@ -44,7 +44,7 @@ def step_down(d, n, c, s, p):
 
 
 def sweep(d, n, c, s, p):
-    return (n - 1) * (c + c * s + 2 * p * (s - c)) + c * s + 2 * (c - 1)
+    return (n - 2) * (c + c * s + 2 * p * (s - c)) + c * s + 2 * (c - 1)
 
 
 def step_up(d, n, c, s, p):

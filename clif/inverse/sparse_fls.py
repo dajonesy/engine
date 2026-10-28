@@ -1,6 +1,17 @@
-#file: clif/inverse/sparse_fls.py   (v7)
+#file: clif/inverse/sparse_fls.py   (v8)
 """ tau-domain FLS inverse on even tables, with native odd tables for
 degenerate odd signatures.
+
+v8 changes
+----------
+  * Serial and thread-parallel twins of the row kernels (mul_even,
+    mul_oddn) are compiled from one source; TauInverse picks one by
+    dimension when it is built (PARALLEL_FROM). Below d = 10 a product has
+    too few rows (27 to 239) to repay starting the threads, and the serial
+    kernel is up to 2x faster; from d = 10 the parallel kernel is about 2x
+    faster. Replaces the module-wide PARALLEL switch. Results are
+    bit-for-bit identical either way: each row is still summed in order by
+    one thread.
 
 v7 changes
 ----------
@@ -139,15 +150,37 @@ Porting notes (C++ and friends)
     initialised to -1, then pos[slots[i]] = i; `c in pos` is `pos[c] >= 0`.
   * Index arrays are int32, sign arrays int8. Both are load-bearing.
 """
+
+import types
+
 import numpy as np
 
 try:
-    from numba import njit
+    from numba import njit, prange
     HAVE_NUMBA = True
 except ImportError:                                    # pragma: no cover
     HAVE_NUMBA = False                                 # kernels ~100x slower
+    prange = range
     def njit(*a, **k):
         return (lambda f: f) if not a else a[0]
+
+# Dimensions from which TauInverse uses the thread-parallel row kernels.
+# Measured on a 4-core / 8-thread laptop: serial wins at d <= 9, parallel
+# wins from d = 10. Set above 11 to run serial throughout.
+PARALLEL_FROM = 10
+
+
+def _twin(f, suffix):
+    """A copy of plain function f under its own name, for a second compile.
+
+    Numba caches each compiled function on disk under its qualified name,
+    so the serial and parallel builds of one source need distinct names.
+    """
+    g = types.FunctionType(f.__code__, f.__globals__, f.__name__ + suffix,
+                           f.__defaults__, f.__closure__)
+    g.__qualname__ = f.__qualname__ + suffix
+    g.__module__ = f.__module__
+    return g
 
 # ----------------------------------------------------------------- domain ---
 
@@ -353,17 +386,18 @@ class OddTable:
 
 # ---------------------------------------------------------------- kernels ---
 
-@njit(cache=True)
-def mul_even(u, v, S0, TA, TB, S, out):
-    acc = 0.0
+def _mul_even(u, v, S0, TA, TB, S, out):
+    """tau-domain product, even table. Rows run under prange: parallel in
+    mul_even_par, an ordinary loop in mul_even."""
+    acc0 = 0.0
     for k in range(S0.shape[0]):                       # scalar row: diagonal
         s = S0[k]
         if s > 0:
-            acc += u[k] * v[k]
+            acc0 += u[k] * v[k]
         elif s < 0:
-            acc -= u[k] * v[k]
-    out[0] = acc
-    for r in range(TA.shape[0]):
+            acc0 -= u[k] * v[k]
+    out[0] = acc0
+    for r in prange(TA.shape[0]):
         acc = 0.0
         for k in range(TA.shape[1]):
             s = S[r, k]
@@ -377,6 +411,10 @@ def mul_even(u, v, S0, TA, TB, S, out):
             else:
                 acc -= p
         out[r + 1] = acc
+
+
+mul_even = njit(cache=True)(_mul_even)
+mul_even_par = njit(cache=True, parallel=True)(_twin(_mul_even, "_par"))
 
 
 @njit(cache=True)
@@ -393,19 +431,28 @@ def mul_even_scalar(u, v, S0):
 
 
 @njit(cache=True)
-def mul_odd(X, Y, Se, I2, S0, TA, TB, S, out, t1, t2, t3):
+def _mul_even_by(par, u, v, S0, TA, TB, S, out):
+    if par:
+        mul_even_par(u, v, S0, TA, TB, S, out)
+    else:
+        mul_even(u, v, S0, TA, TB, S, out)
+
+
+@njit(cache=True)
+def mul_odd(X, Y, Se, I2, S0, TA, TB, S, out, t1, t2, t3, par):
     """(u1 + w1 I)(u2 + w2 I) using only the even table. Four even products.
 
     out must not alias X or Y: u1/w1/u2/w2 are views, not copies.
+    par selects the parallel even kernel.
     """
     u1, w1 = X[:Se], X[Se:]
     u2, w2 = Y[:Se], Y[Se:]
-    mul_even(u1, u2, S0, TA, TB, S, t1)                # u1 u2
-    mul_even(w1, w2, S0, TA, TB, S, t2)                # w1 w2
+    _mul_even_by(par, u1, u2, S0, TA, TB, S, t1)       # u1 u2
+    _mul_even_by(par, w1, w2, S0, TA, TB, S, t2)       # w1 w2
     for i in range(Se):
         out[i] = t1[i] + I2 * t2[i]
-    mul_even(u1, w2, S0, TA, TB, S, t1)                # u1 w2
-    mul_even(w1, u2, S0, TA, TB, S, t3)                # w1 u2
+    _mul_even_by(par, u1, w2, S0, TA, TB, S, t1)       # u1 w2
+    _mul_even_by(par, w1, u2, S0, TA, TB, S, t3)       # w1 u2
     for i in range(Se):
         out[Se + i] = t1[i] + t3[i]
 
@@ -448,9 +495,10 @@ def coo_apply(a, b, o, s, A, X, out):
         out[o[k]] += s[k] * A[a[k]] * X[b[k]]
 
 
-@njit(cache=True)
-def mul_oddn(X, Y, S0, PSG, comp, pp, RO, TA, TB, S, out):
-    """Native odd tau-domain product. 2M + 2*pairs*rows mults."""
+def _mul_oddn(X, Y, S0, PSG, comp, pp, RO, TA, TB, S, out):
+    """Native odd tau-domain product. 2M + 2*pairs*rows mults.
+
+    Rows run under prange: parallel in mul_oddn_par, a loop in mul_oddn."""
     acc = 0.0
     for k in range(S0.shape[0]):                       # scalar: diagonal
         s = S0[k]
@@ -461,7 +509,7 @@ def mul_oddn(X, Y, S0, PSG, comp, pp, RO, TA, TB, S, out):
     for k in range(PSG.shape[0]):                      # pseudoscalar: complement
         acc += PSG[k] * X[k] * Y[comp[k]]
     out[pp] = acc
-    for r in range(TA.shape[0]):
+    for r in prange(TA.shape[0]):
         acc = 0.0
         for k in range(TA.shape[1]):
             s = S[r, k]
@@ -475,6 +523,10 @@ def mul_oddn(X, Y, S0, PSG, comp, pp, RO, TA, TB, S, out):
             else:
                 acc -= p
         out[RO[r]] = acc
+
+
+mul_oddn = njit(cache=True)(_mul_oddn)
+mul_oddn_par = njit(cache=True, parallel=True)(_twin(_mul_oddn, "_par"))
 
 
 @njit(cache=True)
@@ -524,6 +576,7 @@ class TauInverse:
         assert all(s in (-1, 0, 1) for s in sig), "sig entries must be -1, 0, 1"
         self.d, self.sig, self.odd = d, sig, bool(d & 1)
         self.n = 1 << d
+        self.par = d >= PARALLEL_FROM                 # parallel row kernels
         self.tau = tau_signs(d).astype(np.float64)
         self.tweak = _TWEAK[d]
         PS = self.n - 1
@@ -639,13 +692,14 @@ class TauInverse:
         """
         T = self.table
         if self.native:
-            mul_oddn(X, Y, T.S0, T.PSG, T.comp, T.pp, T.RO, T.TA, T.TB, T.S,
-                     out)
+            (mul_oddn_par if self.par else mul_oddn)(
+                X, Y, T.S0, T.PSG, T.comp, T.pp, T.RO, T.TA, T.TB, T.S, out)
         elif self.odd:
             mul_odd(X, Y, self.Se, self.I2, T.S0, T.TA, T.TB, T.S,
-                    out, self._t[0], self._t[1], self._t[2])
+                    out, self._t[0], self._t[1], self._t[2], self.par)
         else:
-            mul_even(X, Y, T.S0, T.TA, T.TB, T.S, out)
+            (mul_even_par if self.par else mul_even)(
+                X, Y, T.S0, T.TA, T.TB, T.S, out)
         return out
 
     def bookend1(self, A):

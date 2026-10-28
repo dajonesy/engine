@@ -22,6 +22,7 @@ build once per signature and keep it. That is all this module does.
 import numpy as np
 from .sparse_fls import TauInverse
 from .sparse_fls_dd import DDTauInverse
+from .low_dim_inverse import LowDimInverse
 
 _CACHE = {}
 
@@ -36,7 +37,10 @@ def get_inverter(sig):
     d = len(sig)
     key = (int(d), tuple(int(s) for s in sig))
     if key not in _CACHE:
-        cls = TauInverse if d < 12 else DDTauInverse
+        if d < 4: 
+            cls = LowDimInverse
+        else:
+            cls = TauInverse if d < 12 else DDTauInverse
         _CACHE[key] = cls(key[0], list(key[1]))
     return _CACHE[key]
 
